@@ -59,7 +59,7 @@ rgb_color hsv_to_rgb(hsv_color color) {
 }
 
 rgb_color rgb(uint8_t r, uint8_t g, uint8_t b) {
-    rgb_color color = {{ r, g, b }};
+    rgb_color color = {{ b, r, g }};
     return color;
 }
 hsv_color hsv(uint8_t h, uint8_t s, uint8_t v) {

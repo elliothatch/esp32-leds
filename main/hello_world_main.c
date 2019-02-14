@@ -9,16 +9,12 @@
 #define NUM_LEDS 64
 #include "ws2812_control.h"
 #include "color.h"
-
-#define RED   0xFF0000
-#define GREEN 0x00FF00
-#define BLUE  0x0000FF
-#define WHITE 0xFFFFFF
-#define BLACK 0x000000
+#include "pixel.h"
 
 void app_main()
 {
-    printf("Hello world!\n");
+	/*BaseType_t taskResult = */
+	/* xTaskCreate(fp_task_render, "Render LED Task", 1028, NULL, 1, NULL); */
 
     /* Print chip information */
     esp_chip_info_t chip_info;
@@ -35,18 +31,27 @@ void app_main()
 
     ws2812_control_init();
 
-    struct led_state new_state;
-    for(int i = 0; i < NUM_LEDS; i++) {
-        rgb_color color = hsv_to_rgb(hsv((uint8_t)((float)i/(float)NUM_LEDS * 255.0), 255, 255));
-        new_state.leds[i] = color.bits;
-    }
+	uint8_t brightness = 1;
+    fp_frameid frame1 = fp_create_frame(8, 8, rgb(brightness, 0, 0));
+    fp_fill_rect(frame1, 0, 0, 6, 6, rgb(0, brightness, 0));
+    fp_fill_rect(frame1, 0, 0, 4, 4, rgb(0, 0, brightness));
+    fp_render(frame1);
+    /* fp_frameid frame2 = fp_create_frame(6, 6, rgb(0, 255, 0)); */
+    /* fp_frameid frame3 = fp_create_frame(4, 4, rgb(0, 0, 255)); */
 
-    new_state.leds[0] = RED;
-    new_state.leds[7] = GREEN;
-    new_state.leds[63-7] = BLUE;
-    new_state.leds[63] = WHITE;
 
-    ws2812_write_leds(new_state);
+    /* struct led_state new_state; */
+    /* for(int i = 0; i < NUM_LEDS; i++) { */
+    /*     rgb_color color = hsv_to_rgb(hsv((uint8_t)((float)i/(float)NUM_LEDS * 255.0), 255, 255)); */
+    /*     new_state.leds[i] = color.bits; */
+    /* } */
+
+    /* new_state.leds[0] = rgb(255, 0, 0).bits; */
+    /* new_state.leds[7] = rgb(0, 255, 0).bits; */
+    /* new_state.leds[63-7] = rgb(0, 0, 255).bits; */
+    /* new_state.leds[63] = rgb(255, 255, 255).bits; */
+
+    /* ws2812_write_leds(new_state); */
 
     for (int i = 5; i >= 0; i--) {
         printf("Restarting in %d seconds...\n", i);
