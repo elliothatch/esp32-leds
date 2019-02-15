@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "esp_system.h"
 #include "esp_spi_flash.h"
 
@@ -11,10 +13,11 @@
 #include "color.h"
 #include "pixel.h"
 
+#define LED_QUEUE_LENGTH 16 
+
 void app_main()
 {
 	/*BaseType_t taskResult = */
-	/* xTaskCreate(fp_task_render, "Render LED Task", 1028, NULL, 1, NULL); */
 
     /* Print chip information */
     esp_chip_info_t chip_info;
@@ -29,13 +32,43 @@ void app_main()
     printf("%dMB %s flash\n", spi_flash_get_chip_size() / (1024 * 1024),
             (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external");
 
-    ws2812_control_init();
+	QueueHandle_t ledQueue = xQueueCreate(LED_QUEUE_LENGTH, sizeof(fp_queue_command));
+	if(!ledQueue) {
+		printf("Failed to allocate queue for led render task\n");
+	}
 
-	uint8_t brightness = 1;
-    fp_frameid frame1 = fp_create_frame(8, 8, rgb(brightness, 0, 0));
-    fp_fill_rect(frame1, 0, 0, 6, 6, rgb(0, brightness, 0));
-    fp_fill_rect(frame1, 0, 0, 4, 4, rgb(0, 0, brightness));
-    fp_render(frame1);
+	SemaphoreHandle_t ledShutdownLock = xSemaphoreCreateBinary();
+	if(!ledShutdownLock) {
+		printf("Failed to create semaphore ledShutdownLock\n");
+	}
+	xSemaphoreGive(ledShutdownLock);
+
+	fp_task_render_params renderParams = { 1000/1, ledQueue, ledShutdownLock };
+
+	fp_frameid frame1 = fp_create_frame(8, 8, rgb(0, 0, 0));
+	for(int i = 0; i < 8; i++) {
+		fp_queue_command command = {
+			FILL_RECT,
+			{ .FILL_RECT = { frame1, 0, i, 8, 1, hsv_to_rgb(hsv(i*255/8, 255, 10))}}
+		};
+		if(xQueueSend(ledQueue, &command, 0) != pdPASS) {
+			printf("failed to send command to led queue\n");
+		}
+	}
+
+	fp_queue_command renderCommand = {
+		RENDER,
+		{.RENDER = { frame1 }}
+	};
+
+	if(xQueueSend(ledQueue, &renderCommand, 0) != pdPASS) {
+		printf("failed to send render command to led queue\n");
+	}
+
+	xTaskCreate(fp_task_render, "Render LED Task", 2048*2, &renderParams, 1, NULL);
+
+	/* xQueueSend( */
+
     /* fp_frameid frame2 = fp_create_frame(6, 6, rgb(0, 255, 0)); */
     /* fp_frameid frame3 = fp_create_frame(4, 4, rgb(0, 0, 255)); */
 
@@ -58,6 +91,7 @@ void app_main()
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 
+	xSemaphoreTake(ledShutdownLock, portMAX_DELAY);
     printf("Restarting now.\n");
     fflush(stdout);
     esp_restart();

@@ -2,6 +2,8 @@
 #define PIXEL_H
 
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 #include "color.h"
@@ -9,6 +11,13 @@
 /* fp: fresh pixel */
 
 /** freeRTOS task that constantly renders at given framerate */
+typedef struct {
+	int refresh_period_ms;
+	QueueHandle_t commands;
+	/* prevents shutting down the chip while rendering, which can cause bright flashes */
+	SemaphoreHandle_t shutdownLock;
+} fp_task_render_params;
+
 void fp_task_render(void *pvParameters);
 
 /* A frame is buffer storing color information for a 2D frame. */
@@ -38,7 +47,7 @@ bool fp_fset_rect(
 	fp_frame* frame
 );
 
-bool fp_fill_rect(
+bool fp_ffill_rect(
 	fp_frameid id,
 	unsigned int x,
 	unsigned int y,
@@ -48,5 +57,36 @@ bool fp_fill_rect(
 );
 
 bool fp_render(fp_frameid id);
+
+typedef enum fp_command{
+	SET_RECT,
+	FILL_RECT,
+	RENDER
+} fp_command;
+
+typedef union {
+	struct {
+		fp_frameid id;
+		unsigned int x;
+		unsigned int y;
+		fp_frame* frame;
+	} SET_RECT;
+	struct {
+		fp_frameid id;
+		unsigned int x;
+		unsigned int y;
+		unsigned int width;
+		unsigned int height;
+		rgb_color color;
+	} FILL_RECT;
+	struct {
+		fp_frameid id;
+	} RENDER;
+} fp_fargs;
+
+typedef struct {
+	fp_command cmd;
+	fp_fargs fargs;
+} fp_queue_command;
 
 #endif /* PIXEL_H */
