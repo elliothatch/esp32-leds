@@ -37,7 +37,7 @@ fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color co
 
 /* retrieve the frame. if there is no frame with the id, returns the NULL frame (all values 0)
  * only use if you cannot achieve what you need with the other commands */
-fp_frame fp_get_frame(fp_frameid id);
+fp_frame* fp_get_frame(fp_frameid id);
 
 bool fp_fset_rect(
 	fp_frameid id,
@@ -88,5 +88,65 @@ typedef struct {
 	fp_command cmd;
 	fp_fargs fargs;
 } fp_queue_command;
+
+typedef unsigned int fp_view_id;
+
+typedef enum {
+	FP_VIEW_FRAME, /* just a frame */
+	FP_VIEW_SCREEN, /* represents the physical LED screen. rendering will render to the LEDs  */
+	FP_VIEW_ANIM,
+	FP_VIEW_LAYER
+} fp_view_type;
+
+typedef struct {
+	fp_frameid frame;
+} fp_view_frame_data;
+
+typedef struct {
+	fp_frameid frame;
+	/* struct led_state leds; */
+} fp_view_screen_data;
+
+typedef struct {
+	unsigned int frameCount;
+	fp_view_id* frames;
+	unsigned int frameIndex;
+	unsigned int frameratePeriodMs;
+} fp_view_anim_data;
+
+typedef enum {
+	FP_BLEND_REPLACE,
+	FP_BLEND_REPLACE_ALL, /* 0s overwrite other colors */
+	FP_BLEND_ADD,
+} fp_blend_mode;
+
+typedef struct {
+	unsigned int layerCount;
+	fp_view_id* layers;
+	fp_blend_mode* layerBlendModes;
+} fp_view_layer_data;
+
+typedef union {
+	fp_view_frame_data* FRAME;
+	fp_view_screen_data* SCREEN;
+	fp_view_anim_data* ANIM;
+	fp_view_layer_data* LAYER;
+} fp_view_data;
+
+typedef struct {
+	fp_view_type type;
+	fp_view_id parent;
+	fp_view_data data;
+} fp_view;
+
+fp_view_id fp_create_view(fp_view_type type, fp_view_id parent, fp_view_data data); /* used internally */
+
+fp_view_id fp_create_frame_view(unsigned int width, unsigned int height, rgb_color color);
+fp_view_id fp_create_screen_view(unsigned int width, unsigned int height);
+fp_view_id fp_create_anim_view(unsigned int frameCount, unsigned int frameratePeriodMs, unsigned int width, unsigned int height);
+fp_view_id fp_create_layer_view(unsigned int layerCount);
+
+fp_view* fp_get_view(fp_view_id id);
+bool fp_render_view(fp_view_id id);
 
 #endif /* PIXEL_H */

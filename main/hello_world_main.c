@@ -43,8 +43,19 @@ void app_main()
 	}
 	xSemaphoreGive(ledShutdownLock);
 
-	fp_task_render_params renderParams = { 1000/1, ledQueue, ledShutdownLock };
+	fp_task_render_params renderParams = { 1000/60, ledQueue, ledShutdownLock };
 
+	fp_view_id screenViewId = fp_create_screen_view(8, 8);
+	fp_view_id animViewId = fp_create_anim_view(8, 1000/10, 8, 8);
+	fp_view* animView = fp_get_view(animViewId);
+	animView->parent = screenViewId;
+	for(int i = 0; i < animView->data.ANIM->frameCount; i++) {
+		for(int j = 0; j < 8; j++) {
+			fp_ffill_rect(fp_get_view(animView->data.ANIM->frames[i])->data.FRAME->frame, 0, j, 8, 1, hsv_to_rgb(hsv(((i+j)*255/8)%255, 255, 10)));
+		}
+	}
+
+	/*
 	fp_frameid frame1 = fp_create_frame(8, 8, rgb(0, 0, 0));
 	for(int i = 0; i < 8; i++) {
 		fp_queue_command command = {
@@ -64,8 +75,9 @@ void app_main()
 	if(xQueueSend(ledQueue, &renderCommand, 0) != pdPASS) {
 		printf("failed to send render command to led queue\n");
 	}
+	*/
 
-	xTaskCreate(fp_task_render, "Render LED Task", 2048*2, &renderParams, 1, NULL);
+	xTaskCreate(fp_task_render, "Render LED Task", 2048*4, &renderParams, 1, NULL);
 
 	/* xQueueSend( */
 
@@ -86,10 +98,13 @@ void app_main()
 
     /* ws2812_write_leds(new_state); */
 
-    for (int i = 5; i >= 0; i--) {
-        printf("Restarting in %d seconds...\n", i);
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-    }
+	while(true) {
+		vTaskDelay(portMAX_DELAY);
+	}
+    /* for (int i = 5; i >= 0; i--) { */
+    /*     printf("Restarting in %d seconds...\n", i); */
+    /*     vTaskDelay(1000 / portTICK_PERIOD_MS); */
+    /* } */
 
 	xSemaphoreTake(ledShutdownLock, portMAX_DELAY);
     printf("Restarting now.\n");

@@ -7,14 +7,28 @@
 #include "ws2812_control.h"
 
 #define FP_FRAME_COUNT 16
+#define FP_VIEW_COUNT 16
+#define FP_PENDING_VIEW_RENDER_COUNT 16
+
+typedef struct {
+	fp_view_id view;
+	TickType_t tick; /* the view will be as soon as possible after this tick */
+} fp_pending_view_render;
 
 unsigned int calc_index(unsigned int x, unsigned int y, unsigned int width) {
 	return y * width + x % width;
 }
 
 struct led_state ledState;
-unsigned int frameCount = 1;
-fp_frame frames[FP_FRAME_COUNT] = {{ 0, 0, NULL}};
+unsigned int framePoolCount = 1;
+fp_frame framePool[FP_FRAME_COUNT] = {{ 0, 0, NULL}};
+unsigned int viewCount = 1;
+fp_view viewPool[FP_VIEW_COUNT] = {{ FP_VIEW_FRAME, 0, {.FRAME = NULL}}};
+
+/* circular buffer */
+unsigned int pendingViewRenderCount = 0;
+unsigned int pendingViewRenderIndex = 0;
+fp_pending_view_render pendingViewRenderPool[FP_PENDING_VIEW_RENDER_COUNT];
 
 /** locks fs_create_frame. allows multiple tasks to safely create frames */
 SemaphoreHandle_t createFrameLock = NULL;
@@ -60,8 +74,34 @@ void fp_task_render(void *pvParameters) {
 					break;
 			}
 		}
+
+		TickType_t currentTick = xTaskGetTickCount();
 		/* composite the image */
 		/* TODO */
+		for(int i = 0; i < pendingViewRenderCount; i++) {
+			fp_pending_view_render pendingRender = pendingViewRenderPool[(i + pendingViewRenderIndex) % FP_PENDING_VIEW_RENDER_COUNT];
+			if(pendingRender.tick <= currentTick) {
+				fp_view* view = fp_get_view(pendingRender.view);
+
+				if(view->type == FP_VIEW_ANIM) {
+					// TODO: move this elsewhere
+					// NOTE: advances frame BEFORE render, so intermediate calls to render on this frame won't change until the next pending render */
+					view->data.ANIM->frameIndex = (view->data.ANIM->frameIndex + 1) % view->data.ANIM->frameCount;
+					// queue up the next frame
+					unsigned int nextRender = (pendingViewRenderIndex + pendingViewRenderCount) % FP_PENDING_VIEW_RENDER_COUNT;
+					pendingViewRenderCount++;
+					pendingViewRenderPool[nextRender].view = pendingRender.view;
+					pendingViewRenderPool[nextRender].tick = currentTick + pdMS_TO_TICKS(view->data.ANIM->frameratePeriodMs);
+				}
+
+				xSemaphoreTake(params->shutdownLock, portMAX_DELAY);
+				fp_render_view(pendingRender.view); 
+				xSemaphoreGive(params->shutdownLock);
+				// dequeue pending render
+				pendingViewRenderIndex = (pendingViewRenderIndex + 1) % FP_PENDING_VIEW_RENDER_COUNT;
+				pendingViewRenderCount--;
+			}
+		}
 		vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(params->refresh_period_ms));
 	}
 }
@@ -89,22 +129,22 @@ fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color co
 	}
 
 	xSemaphoreTake(createFrameLock, portMAX_DELAY);
-	fp_frameid id = frameCount++;
+	fp_frameid id = framePoolCount++;
 	xSemaphoreGive(createFrameLock);
 
-	frames[id].length = length;
-	frames[id].width = width;
-	frames[id].pixels = pixels;
+	framePool[id].length = length;
+	framePool[id].width = width;
+	framePool[id].pixels = pixels;
 
 	return id;
 }
 
-fp_frame fp_get_frame(fp_frameid id) {
-	if(id >= frameCount) {
-		return frames[0];
+fp_frame* fp_get_frame(fp_frameid id) {
+	if(id >= framePoolCount) {
+		return &framePool[0];
 	}
 
-	return frames[id];
+	return &framePool[id];
 }
 
 bool fp_fset_rect(
@@ -113,11 +153,11 @@ bool fp_fset_rect(
 		unsigned int y,
 		fp_frame* frame
 		) {
-	if(id >= frameCount) {
+	if(id >= framePoolCount) {
 		return false;
 	}
 
-	fp_frame* targetFrame = &frames[id];
+	fp_frame* targetFrame = &framePool[id];
 
 	for(int row = 0; row < frame->length / frame->width; row++) {
 		memcpy(
@@ -138,11 +178,11 @@ bool fp_ffill_rect(
 		unsigned int height,
 		rgb_color color
 		) {
-	if(id >= frameCount) {
+	if(id >= framePoolCount) {
 		return false;
 	}
 
-	fp_frame* frame = &frames[id];
+	fp_frame* frame = &framePool[id];
 	for(int row = 0; row < height; row++) {
 		for(int col = 0; col < width; col++) {
 			frame->pixels[calc_index(x + col, y + row, frame->width)] = color;
@@ -153,13 +193,108 @@ bool fp_ffill_rect(
 }
 
 bool fp_render(fp_frameid id) {
-	if(id >= frameCount) {
+	if(id >= framePoolCount) {
 		return false;
 	}
 
-	fp_frame* frame = &frames[id];
+	fp_frame* frame = &framePool[id];
 	memcpy(ledState.leds, frame->pixels, fmin(frame->length, NUM_LEDS) * sizeof(((fp_frame*)0)->pixels));
 	ws2812_write_leds(ledState);
+
+	return true;
+}
+
+fp_view* fp_get_view(fp_view_id id) {
+	if(id >= viewCount) {
+		return &viewPool[0];
+	}
+
+	return &viewPool[id];
+}
+
+fp_view_id fp_create_view(fp_view_type type, fp_view_id parent, fp_view_data data) {
+	fp_view_id id = viewCount++;
+
+	viewPool[id].type = type;
+	viewPool[id].parent = parent;
+	viewPool[id].data = data;
+
+	return id;
+}
+
+fp_view_id fp_create_frame_view(unsigned int width, unsigned int height, rgb_color color) {
+	fp_view_frame_data* frameData = malloc(sizeof(fp_view_frame_data));
+	frameData->frame = fp_create_frame(width, height, color);
+	fp_view_data data = { .FRAME = frameData };
+
+	return fp_create_view(FP_VIEW_FRAME, 0, data);
+}
+
+fp_view_id fp_create_screen_view(unsigned int width, unsigned int height) {
+	fp_view_screen_data * screenData = malloc(sizeof(fp_view_screen_data));
+	screenData->frame = fp_create_frame(width, height, rgb(0,0,0));
+	fp_view_data data = { .SCREEN = screenData };
+
+	return fp_create_view(FP_VIEW_SCREEN, 0, data);
+}
+
+fp_view_id fp_create_anim_view(unsigned int frameCount, unsigned int frameratePeriodMs, unsigned int width, unsigned int height) {
+	fp_view_id* frames = malloc(frameCount * sizeof(fp_view_id));
+
+	fp_view_anim_data* animData = malloc(sizeof(fp_view_anim_data));
+	animData->frameCount = frameCount;
+	animData->frames = frames;
+	animData->frameIndex = 0;
+	animData->frameratePeriodMs = frameratePeriodMs;
+
+	fp_view_data data = { .ANIM = animData };
+	fp_view_id id = fp_create_view(FP_VIEW_ANIM, 0, data);
+
+	/* init frames */
+	for(int i = 0; i < frameCount; i++) {
+		frames[i] = fp_create_frame_view(width, height, rgb(0,0,0));
+		(&viewPool[frames[i]])->parent = id;
+	}
+
+	// for now, immediately queue the animation for render
+	unsigned int pendingRender = (pendingViewRenderIndex + pendingViewRenderCount) % FP_PENDING_VIEW_RENDER_COUNT;
+	pendingViewRenderCount++;
+	pendingViewRenderPool[pendingRender].view = id;
+	pendingViewRenderPool[pendingRender].tick = xTaskGetTickCount() + pdMS_TO_TICKS(frameratePeriodMs);
+
+	return id;
+}
+
+fp_view_id fp_create_layer_view(unsigned int layerCount) {
+	return 0;
+}
+
+bool fp_render_view(fp_view_id id) {
+	if(id >= viewCount) {
+		return false;
+	}
+
+	fp_view* view = &viewPool[id];
+	switch(view->type) {
+		case FP_VIEW_FRAME:
+			break;
+		case FP_VIEW_SCREEN:
+			fp_render(view->data.SCREEN->frame);
+			break;
+		case FP_VIEW_ANIM:
+			// todo: make this generic with drawable interface
+			if(view->parent && fp_get_view(view->parent)->type == FP_VIEW_SCREEN) {
+				fp_view* screenView = fp_get_view(view->parent);
+				fp_fset_rect(screenView->data.SCREEN->frame, 0, 0, fp_get_frame(fp_get_view(view->data.ANIM->frames[view->data.ANIM->frameIndex])->data.FRAME->frame));
+			}
+			break;
+		case FP_VIEW_LAYER:
+			break;
+	}
+
+	if(view->parent) {
+		return fp_render_view(view->parent);
+	}
 
 	return true;
 }
