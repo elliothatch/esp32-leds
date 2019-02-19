@@ -46,12 +46,19 @@ void app_main()
 	fp_task_render_params renderParams = { 1000/60, ledQueue, ledShutdownLock };
 
 	fp_view_id screenViewId = fp_create_screen_view(8, 8);
-	fp_view_id animViewId = fp_create_anim_view(8, 1000/10, 8, 8);
+
+	const unsigned int frameCount = 60;
+	fp_view_id animViewId = fp_create_anim_view(frameCount, 3000/frameCount, 8, 8);
 	fp_view* animView = fp_get_view(animViewId);
 	animView->parent = screenViewId;
-	for(int i = 0; i < animView->data.ANIM->frameCount; i++) {
+	for(int i = 0; i < frameCount; i++) {
 		for(int j = 0; j < 8; j++) {
-			fp_ffill_rect(fp_get_view(animView->data.ANIM->frames[i])->data.FRAME->frame, 0, j, 8, 1, hsv_to_rgb(hsv(((i+j)*255/8)%255, 255, 10)));
+			fp_ffill_rect(
+				fp_get_view(animView->data.ANIM->frames[i])->data.FRAME->frame,
+				0, j,
+				8, 1,
+				hsv_to_rgb(hsv(((255*i/frameCount)+(255*j/8))%256, 255, 25))
+			);
 		}
 	}
 

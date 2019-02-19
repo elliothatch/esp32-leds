@@ -6,8 +6,8 @@
 #include "pixel.h"
 #include "ws2812_control.h"
 
-#define FP_FRAME_COUNT 16
-#define FP_VIEW_COUNT 16
+#define FP_FRAME_COUNT 64
+#define FP_VIEW_COUNT 64
 #define FP_PENDING_VIEW_RENDER_COUNT 16
 
 typedef struct {
@@ -45,6 +45,7 @@ void fp_task_render(void *pvParameters) {
 
 	TickType_t lastWakeTime = xTaskGetTickCount();
 	while(true) {
+
 		/* process commands */
 		fp_queue_command command;
 		while(xQueueReceive(params->commands, &command, 0) == pdPASS) {
@@ -108,8 +109,8 @@ void fp_task_render(void *pvParameters) {
 
 fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color color) {
 	unsigned int length = width * height;
-	rgb_color* pixels = malloc(length * sizeof(rgb_color));
 
+	rgb_color* pixels = malloc(length * sizeof(rgb_color));
 	if(!pixels) {
 		printf("error: fp_create_frame: failed to allocate memory for pixels\n");
 		return 0;
@@ -136,11 +137,17 @@ fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color co
 	framePool[id].width = width;
 	framePool[id].pixels = pixels;
 
+	/* printf("create frame: %d %d %d\n", */ 
+	/* 	id, */
+	/* 	framePool[id].length, */
+	/* 	framePool[id].width */
+	/* ); */
 	return id;
 }
 
 fp_frame* fp_get_frame(fp_frameid id) {
 	if(id >= framePoolCount) {
+		printf("error: fp_get_frame: id %d too large, max id: %d\n", id, framePoolCount-1);
 		return &framePool[0];
 	}
 
@@ -198,6 +205,14 @@ bool fp_render(fp_frameid id) {
 	}
 
 	fp_frame* frame = &framePool[id];
+	/* printf("render %d, %d, %d\n", id, frame->width, frame->length); */
+	/* for(int row = 0; row < frame->length / frame->width; row++) { */
+	/* 	for(int col = 0; col < frame->width; col++) { */
+	/* 		unsigned int idx = calc_index(row, col, frame->width); */
+	/* 		printf("%03d %03d %03d | ", frame->pixels[idx].fields.r, frame->pixels[idx].fields.g, frame->pixels[idx].fields.b); */
+	/* 	} */
+	/* 	printf("\n"); */
+	/* } */
 	memcpy(ledState.leds, frame->pixels, fmin(frame->length, NUM_LEDS) * sizeof(((fp_frame*)0)->pixels));
 	ws2812_write_leds(ledState);
 
@@ -206,6 +221,7 @@ bool fp_render(fp_frameid id) {
 
 fp_view* fp_get_view(fp_view_id id) {
 	if(id >= viewCount) {
+		printf("error: fp_get_view: id %d too large, max id: %d\n", id, viewCount-1);
 		return &viewPool[0];
 	}
 
@@ -224,6 +240,11 @@ fp_view_id fp_create_view(fp_view_type type, fp_view_id parent, fp_view_data dat
 
 fp_view_id fp_create_frame_view(unsigned int width, unsigned int height, rgb_color color) {
 	fp_view_frame_data* frameData = malloc(sizeof(fp_view_frame_data));
+	if(!frameData) {
+		printf("error: fp_create_frame_view: failed to allocate memory for frameData\n");
+		return 0;
+	}
+
 	frameData->frame = fp_create_frame(width, height, color);
 	fp_view_data data = { .FRAME = frameData };
 
@@ -232,6 +253,11 @@ fp_view_id fp_create_frame_view(unsigned int width, unsigned int height, rgb_col
 
 fp_view_id fp_create_screen_view(unsigned int width, unsigned int height) {
 	fp_view_screen_data * screenData = malloc(sizeof(fp_view_screen_data));
+	if(!screenData) {
+		printf("error: fp_create_screen_view: failed to allocate memory for screenData\n");
+		return 0;
+	}
+
 	screenData->frame = fp_create_frame(width, height, rgb(0,0,0));
 	fp_view_data data = { .SCREEN = screenData };
 
@@ -240,8 +266,18 @@ fp_view_id fp_create_screen_view(unsigned int width, unsigned int height) {
 
 fp_view_id fp_create_anim_view(unsigned int frameCount, unsigned int frameratePeriodMs, unsigned int width, unsigned int height) {
 	fp_view_id* frames = malloc(frameCount * sizeof(fp_view_id));
+	if(!frames) {
+		printf("error: fp_create_anim_view: failed to allocate memory for frames\n");
+		return 0;
+	}
 
 	fp_view_anim_data* animData = malloc(sizeof(fp_view_anim_data));
+	if(!animData) {
+		printf("error: fp_create_anim_view: failed to allocate memory for animData\n");
+		free(frames);
+		return 0;
+	}
+
 	animData->frameCount = frameCount;
 	animData->frames = frames;
 	animData->frameIndex = 0;
@@ -285,7 +321,24 @@ bool fp_render_view(fp_view_id id) {
 			// todo: make this generic with drawable interface
 			if(view->parent && fp_get_view(view->parent)->type == FP_VIEW_SCREEN) {
 				fp_view* screenView = fp_get_view(view->parent);
-				fp_fset_rect(screenView->data.SCREEN->frame, 0, 0, fp_get_frame(fp_get_view(view->data.ANIM->frames[view->data.ANIM->frameIndex])->data.FRAME->frame));
+				fp_fset_rect(
+						screenView->data.SCREEN->frame,
+						0, 0,
+						fp_get_frame(fp_get_view(view->data.ANIM->frames[view->data.ANIM->frameIndex])->data.FRAME->frame));
+
+				/*
+				fp_view_id frameViewId = view->data.ANIM->frames[view->data.ANIM->frameIndex];
+				fp_view* frameView = fp_get_view(frameViewId);
+				fp_frame* frame = fp_get_frame(frameView->data.FRAME->frame);
+				printf("%d, %d, %d: %d %d %d\n",
+						frameView->type,
+						frame->length,
+						frame->width,
+						frame->pixels[0].fields.r,
+						frame->pixels[0].fields.g,
+						frame->pixels[0].fields.b
+				  );
+				  */
 			}
 			break;
 		case FP_VIEW_LAYER:
