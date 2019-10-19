@@ -1,3 +1,4 @@
+#include <math.h>
 #include <stdio.h>
 
 #include "color.h"
@@ -65,4 +66,13 @@ rgb_color rgb(uint8_t r, uint8_t g, uint8_t b) {
 hsv_color hsv(uint8_t h, uint8_t s, uint8_t v) {
     hsv_color color = {{ h, s, v }};
     return color;
+}
+
+rgb_color rgb_add(rgb_color a, rgb_color b) {
+	rgb_color color = {{
+		fmin(a.fields.b + b.fields.b, 255),
+		fmin(a.fields.r + b.fields.r, 255),
+		fmin(a.fields.g + b.fields.g, 255),
+	}};
+	return color;
 }

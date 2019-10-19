@@ -47,6 +47,14 @@ bool fp_fset_rect(
 	fp_frame* frame
 );
 
+bool fp_fset_rect_transparent(
+	fp_frameid id,
+	unsigned int x,
+	unsigned int y,
+	/* pointer to the frame to copy from */
+	fp_frame* frame
+);
+
 bool fp_ffill_rect(
 	fp_frameid id,
 	unsigned int x,
@@ -56,13 +64,25 @@ bool fp_ffill_rect(
 	rgb_color color
 );
 
+/** combines the frames using rgb elementwise addition */
+bool fp_fadd_rect(
+	fp_frameid id,
+	unsigned int x,
+	unsigned int y,
+	/* pointer to the frame to copy from */
+	fp_frame* frame
+);
+
 bool fp_render(fp_frameid id);
 
 typedef enum fp_command{
 	SET_RECT,
 	FILL_RECT,
-	RENDER
+	RENDER,
+	RENDER_VIEW
 } fp_command;
+
+typedef unsigned int fp_viewid;
 
 typedef union {
 	struct {
@@ -82,14 +102,15 @@ typedef union {
 	struct {
 		fp_frameid id;
 	} RENDER;
+	struct {
+		fp_viewid id;
+	} RENDER_VIEW;
 } fp_fargs;
 
 typedef struct {
 	fp_command cmd;
 	fp_fargs fargs;
 } fp_queue_command;
-
-typedef unsigned int fp_view_id;
 
 typedef enum {
 	FP_VIEW_FRAME, /* just a frame */
@@ -109,21 +130,27 @@ typedef struct {
 
 typedef struct {
 	unsigned int frameCount;
-	fp_view_id* frames;
+	fp_viewid* frames;
 	unsigned int frameIndex;
 	unsigned int frameratePeriodMs;
 } fp_view_anim_data;
 
 typedef enum {
 	FP_BLEND_REPLACE,
-	FP_BLEND_REPLACE_ALL, /* 0s overwrite other colors */
+	FP_BLEND_OVERWRITE, /* 0s overwrite other colors */
 	FP_BLEND_ADD,
 } fp_blend_mode;
 
 typedef struct {
+	fp_viewid view;
+	fp_blend_mode blendMode;
+	unsigned int offsetX;
+	unsigned int offsetY;
+} fp_layer;
+
+typedef struct {
 	unsigned int layerCount;
-	fp_view_id* layers;
-	fp_blend_mode* layerBlendModes;
+	fp_layer* layers;
 } fp_view_layer_data;
 
 typedef union {
@@ -135,18 +162,18 @@ typedef union {
 
 typedef struct {
 	fp_view_type type;
-	fp_view_id parent;
+	fp_viewid parent;
 	fp_view_data data;
 } fp_view;
 
-fp_view_id fp_create_view(fp_view_type type, fp_view_id parent, fp_view_data data); /* used internally */
+fp_viewid fp_create_view(fp_view_type type, fp_viewid parent, fp_view_data data); /* used internally */
 
-fp_view_id fp_create_frame_view(unsigned int width, unsigned int height, rgb_color color);
-fp_view_id fp_create_screen_view(unsigned int width, unsigned int height);
-fp_view_id fp_create_anim_view(unsigned int frameCount, unsigned int frameratePeriodMs, unsigned int width, unsigned int height);
-fp_view_id fp_create_layer_view(unsigned int layerCount);
+fp_viewid fp_create_frame_view(unsigned int width, unsigned int height, rgb_color color);
+fp_viewid fp_create_screen_view(unsigned int width, unsigned int height);
+fp_viewid fp_create_anim_view(unsigned int frameCount, unsigned int frameratePeriodMs, unsigned int width, unsigned int height);
+fp_viewid fp_create_layer_view(unsigned int layerCount, unsigned int width, unsigned int height);
 
-fp_view* fp_get_view(fp_view_id id);
-bool fp_render_view(fp_view_id id);
+fp_view* fp_get_view(fp_viewid id);
+bool fp_render_view(fp_viewid id);
 
 #endif /* PIXEL_H */
