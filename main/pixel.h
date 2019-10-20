@@ -10,16 +10,6 @@
 
 /* fp: fresh pixel */
 
-/** freeRTOS task that constantly renders at given framerate */
-typedef struct {
-	int refresh_period_ms;
-	QueueHandle_t commands;
-	/* prevents shutting down the chip while rendering, which can cause bright flashes */
-	SemaphoreHandle_t shutdownLock;
-} fp_task_render_params;
-
-void fp_task_render(void *pvParameters);
-
 /* A frame is buffer storing color information for a 2D frame. */
 typedef struct {
 	/* length of "pixels" buffer */
@@ -124,6 +114,7 @@ typedef struct {
 } fp_view_frame_data;
 
 typedef struct {
+	fp_viewid childView;
 	fp_frameid frame;
 	/* struct led_state leds; */
 } fp_view_screen_data;
@@ -139,6 +130,7 @@ typedef enum {
 	FP_BLEND_REPLACE,
 	FP_BLEND_OVERWRITE, /* 0s overwrite other colors */
 	FP_BLEND_ADD,
+	FP_BLEND_MULTIPLY,
 } fp_blend_mode;
 
 typedef struct {
@@ -151,6 +143,9 @@ typedef struct {
 typedef struct {
 	unsigned int layerCount;
 	fp_layer* layers;
+	/** stores the result of render */
+	fp_frameid frame;
+
 } fp_view_layer_data;
 
 typedef union {
@@ -163,6 +158,7 @@ typedef union {
 typedef struct {
 	fp_view_type type;
 	fp_viewid parent;
+	bool dirty; /* render should be called on this before fp_get_frame */
 	fp_view_data data;
 } fp_view;
 
@@ -171,9 +167,25 @@ fp_viewid fp_create_view(fp_view_type type, fp_viewid parent, fp_view_data data)
 fp_viewid fp_create_frame_view(unsigned int width, unsigned int height, rgb_color color);
 fp_viewid fp_create_screen_view(unsigned int width, unsigned int height);
 fp_viewid fp_create_anim_view(unsigned int frameCount, unsigned int frameratePeriodMs, unsigned int width, unsigned int height);
-fp_viewid fp_create_layer_view(unsigned int layerCount, unsigned int width, unsigned int height);
+fp_viewid fp_create_layer_view(fp_viewid* views, unsigned int layerCount, unsigned int width, unsigned int height, unsigned int layerWidth, unsigned int layerHeight);
 
 fp_view* fp_get_view(fp_viewid id);
 bool fp_render_view(fp_viewid id);
+void fp_mark_view_dirty(fp_viewid id);
+
+// returns a frame containing the contents of that view. compositing views (e.g. layer_view) may 
+fp_frameid fp_get_view_frame(fp_viewid id);
+
+/** freeRTOS task that constantly renders at given framerate */
+typedef struct {
+	int refresh_period_ms;
+	fp_viewid rootView;
+	QueueHandle_t commands;
+	/* prevents shutting down the chip while rendering, which can cause bright flashes */
+	SemaphoreHandle_t shutdownLock;
+} fp_task_render_params;
+
+void fp_task_render(void *pvParameters);
+
 
 #endif /* PIXEL_H */

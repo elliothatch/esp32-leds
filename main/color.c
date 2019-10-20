@@ -76,3 +76,12 @@ rgb_color rgb_add(rgb_color a, rgb_color b) {
 	}};
 	return color;
 }
+
+rgb_color rgb_multiply(rgb_color a, rgb_color b) {
+	rgb_color color = {{
+		a.fields.b * b.fields.b / 255,
+		a.fields.r * b.fields.r / 255,
+		a.fields.g * b.fields.g / 255,
+	}};
+	return color;
+}

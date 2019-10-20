@@ -28,5 +28,6 @@ rgb_color rgb(uint8_t r, uint8_t g, uint8_t b);
 hsv_color hsv(uint8_t h, uint8_t s, uint8_t v);
 
 rgb_color rgb_add(rgb_color a, rgb_color b);
+rgb_color rgb_multiply(rgb_color a, rgb_color b);
 
 #endif /* COLOR_H */

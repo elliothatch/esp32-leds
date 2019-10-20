@@ -1,5 +1,6 @@
 /* Hello World Example
 */
+#include <math.h>
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -43,17 +44,106 @@ void app_main()
 	}
 	xSemaphoreGive(ledShutdownLock);
 
-	fp_task_render_params renderParams = { 1000/60, ledQueue, ledShutdownLock };
-
 	fp_viewid screenViewId = fp_create_screen_view(8, 8);
 	
 	const unsigned int layerCount = 5;
-	fp_viewid layerViewId = fp_create_layer_view(layerCount, 4, 4);
+
+	fp_viewid animViewIds[layerCount];
+	const unsigned int frameCount = 30;
+
+	for(int layerIndex = 0; layerIndex < layerCount - 1; layerIndex++) {
+		animViewIds[layerIndex] = fp_create_anim_view(frameCount, 2000/frameCount, 4, 4);
+		fp_view* animView = fp_get_view(animViewIds[layerIndex]);
+
+		for(int i = 0; i < frameCount; i++) {
+			for(int j = 0; j < 4; j++) {
+				int hueOffset = 0;
+				if(layerIndex == 1) {
+					hueOffset = 1;
+				}
+				if(layerIndex == 2) {
+					hueOffset = 1;
+				}
+				if(layerIndex == 3) {
+					hueOffset = 2;
+				}
+				if(layerIndex == 0 || layerIndex == 3) {
+					fp_ffill_rect(
+						fp_get_view_frame(animView->data.ANIM->frames[((layerIndex+1) % 2)*(frameCount - 1 - 2*i) + i]),
+						0, j,
+						4, 1,
+						hsv_to_rgb(hsv(
+							(
+								 255 * hueOffset / (layerCount - 1)
+								+ (255*i/frameCount + 255*j/frameCount)
+							)% 256,
+							/* 255 * layerIndex / layerCount */
+							/* + (((255*i/frameCount + 255*j/4) % 256) */
+							/*   / layerCount), */
+							255,
+							25))
+					);
+				}
+				else {
+					fp_ffill_rect(
+						fp_get_view_frame(animView->data.ANIM->frames[((layerIndex+1) % 2)*(frameCount - 1 - 2*i) + i]),
+						j, 0,
+						1, 4,
+						hsv_to_rgb(hsv(
+							(
+								 255 * hueOffset / (layerCount - 1)
+								+ (255*i/frameCount + 255*j/frameCount)
+							)% 256,
+							/* 255 * layerIndex / layerCount */
+							/* + (((255*i/frameCount + 255*j/4) % 256) */
+							/*   / layerCount), */
+							255,
+							25))
+					);
+				}
+			}
+		}
+	}
+
+	/* mask fades in and out */
+	const unsigned int maskFrameCount = 60;
+	animViewIds[4] = fp_create_anim_view(maskFrameCount, 4000/maskFrameCount, 4, 4);
+	fp_view* maskAnimView = fp_get_view(animViewIds[4]);
+	for(int i = 0; i < maskFrameCount; i++) {
+		unsigned int brightness = 25*abs(i - maskFrameCount/2)/(maskFrameCount/2);
+		fp_ffill_rect(
+			fp_get_view_frame(maskAnimView->data.ANIM->frames[i]),
+			0, 0,
+			4, 4,
+			rgb(brightness, brightness, brightness)
+		);
+	}
+
+
+
+	fp_viewid layerViews[] = {
+		animViewIds[0],
+		animViewIds[1],
+		animViewIds[2],
+		animViewIds[3],
+		animViewIds[4],
+	};
+
+
+	fp_viewid layerViewId = fp_create_layer_view(layerViews, layerCount, 8, 8, 4, 4);
 	fp_view* layerView = fp_get_view(layerViewId);
+	/*
+	printf("%d %d %d %d %d\n",
+			layerView->data.LAYER->layers[0].view,
+			layerView->data.LAYER->layers[1].view,
+			layerView->data.LAYER->layers[2].view,
+			layerView->data.LAYER->layers[3].view,
+			layerView->data.LAYER->layers[4].view
+	);
+	*/
 	layerView->parent = screenViewId;
 	for(int i = 0; i < layerCount; i++) {
 		fp_layer* layer = &layerView->data.LAYER->layers[i];
-		layer->blendMode = FP_BLEND_ADD;
 		if(i != layerCount - 1) {
 			layer->offsetX = 4 * (i % 2);
 			layer->offsetY = 4 * (i / 2);
@@ -61,14 +151,28 @@ void app_main()
 		else {
 			layer->offsetX = 2;
 			layer->offsetY = 2;
-		}
+		/* layer->blendMode = FP_BLEND_OVERWRITE; */
+		layer->blendMode = FP_BLEND_ADD;
+		/* layer->blendMode = FP_BLEND_MULTIPLY; */
 
-		fp_ffill_rect(
-			fp_get_view(layer->view)->data.FRAME->frame,
-			0, 0,
-			4, 4,
-			hsv_to_rgb(hsv(255*i/layerCount, 255, 25))
-		);
+			/*
+			fp_ffill_rect(
+				fp_get_view_frame(layer->view),
+				0, 0,
+				4, 4,
+				rgb(255, 0, 0)
+			);
+			*/
+
+			/*
+			fp_ffill_rect(
+				fp_get_view_frame(layer->view),
+				1, 1,
+				2, 2,
+				rgb(0, 0, 0)
+			);
+			*/
+		}
 	}
 
 	/** animation test */
@@ -102,6 +206,7 @@ void app_main()
 	}
 	*/
 
+	/*
 	fp_queue_command renderCommand = {
 		RENDER_VIEW,
 		{.RENDER_VIEW = { layerViewId }}
@@ -110,6 +215,13 @@ void app_main()
 	if(xQueueSend(ledQueue, &renderCommand, 0) != pdPASS) {
 		printf("failed to send render command to led queue\n");
 	}
+	*/
+
+	fp_view* screenView = fp_get_view(screenViewId);
+	/* screenView->data.SCREEN->childView = animViewId; */
+	screenView->data.SCREEN->childView = layerViewId;
+
+	fp_task_render_params renderParams = { 1000/60, screenViewId, ledQueue, ledShutdownLock };
 
 	xTaskCreate(fp_task_render, "Render LED Task", 2048*4, &renderParams, 1, NULL);
 

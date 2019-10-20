@@ -2,7 +2,8 @@
  * pixel.c
  * Manages a pool of "frames" and "views" to support complex displays and animations
  *  - frame: Rectangle of RGB pixels
- *  - view: Contains one or more frames and data to display those frames. If a view has a parent, the parent is rendered immediately after rendering the child
+ *  - view: Contains one or more frames and data to display those frames. the parent is rendered immediately after rendering the child
+ *
  *
  *  view types:
  *		frame_view: wraps a single frame (used internally, and useful in composite views)
@@ -51,8 +52,8 @@
 #include "pixel.h"
 #include "ws2812_control.h"
 
-#define FP_FRAME_COUNT 64
-#define FP_VIEW_COUNT 64
+#define FP_FRAME_COUNT 512
+#define FP_VIEW_COUNT 256
 #define FP_PENDING_VIEW_RENDER_COUNT 16
 
 typedef struct {
@@ -68,14 +69,14 @@ struct led_state ledState;
 unsigned int framePoolCount = 1;
 fp_frame framePool[FP_FRAME_COUNT] = {{ 0, 0, NULL}};
 unsigned int viewCount = 1;
-fp_view viewPool[FP_VIEW_COUNT] = {{ FP_VIEW_FRAME, 0, {.FRAME = NULL}}};
+fp_view viewPool[FP_VIEW_COUNT] = {{ FP_VIEW_FRAME, 0, false, {.FRAME = 0}}};
 
 /* circular buffer */
 unsigned int pendingViewRenderCount = 0;
 unsigned int pendingViewRenderIndex = 0;
 fp_pending_view_render pendingViewRenderPool[FP_PENDING_VIEW_RENDER_COUNT];
 
-/** locks fs_create_frame. allows multiple tasks to safely create frames */
+/** locks fp_create_frame. allows multiple tasks to safely create frames */
 SemaphoreHandle_t createFrameLock = NULL;
 
 void fp_task_render(void *pvParameters) {
@@ -129,8 +130,17 @@ void fp_task_render(void *pvParameters) {
 		TickType_t currentTick = xTaskGetTickCount();
 		/* composite the image */
 		/* TODO */
-		for(int i = 0; i < pendingViewRenderCount; i++) {
-			fp_pending_view_render pendingRender = pendingViewRenderPool[(i + pendingViewRenderIndex) % FP_PENDING_VIEW_RENDER_COUNT];
+		/* process each pending render by dequeuing. requeue if the render is still pending */
+		/* TODO: just us a vector for this? */
+		int originalPendingViewRenderCount = pendingViewRenderCount;
+		int originalPendingViewRenderIndex = pendingViewRenderIndex;
+		for(int i = 0; i < originalPendingViewRenderCount; i++) {
+			fp_pending_view_render pendingRender = pendingViewRenderPool[(i + originalPendingViewRenderIndex) % FP_PENDING_VIEW_RENDER_COUNT];
+
+			// dequeue pending render
+			pendingViewRenderIndex = (pendingViewRenderIndex + 1) % FP_PENDING_VIEW_RENDER_COUNT;
+			pendingViewRenderCount--;
+
 			if(pendingRender.tick <= currentTick) {
 				fp_view* view = fp_get_view(pendingRender.view);
 
@@ -145,19 +155,33 @@ void fp_task_render(void *pvParameters) {
 					pendingViewRenderPool[nextRender].tick = currentTick + pdMS_TO_TICKS(view->data.ANIM->frameratePeriodMs);
 				}
 
-				xSemaphoreTake(params->shutdownLock, portMAX_DELAY);
-				fp_render_view(pendingRender.view); 
-				xSemaphoreGive(params->shutdownLock);
-				// dequeue pending render
-				pendingViewRenderIndex = (pendingViewRenderIndex + 1) % FP_PENDING_VIEW_RENDER_COUNT;
-				pendingViewRenderCount--;
+				fp_mark_view_dirty(pendingRender.view); 
 			}
+			else {
+				// requeue
+				unsigned int nextRender = (pendingViewRenderIndex + pendingViewRenderCount) % FP_PENDING_VIEW_RENDER_COUNT;
+				pendingViewRenderCount++;
+				pendingViewRenderPool[nextRender].view = pendingRender.view;
+				pendingViewRenderPool[nextRender].tick = pendingRender.tick;
+			}
+		}
+
+		fp_view* rootView = fp_get_view(params->rootView);
+		if(rootView->dirty) {
+			xSemaphoreTake(params->shutdownLock, portMAX_DELAY);
+			fp_render_view(params->rootView);
+			xSemaphoreGive(params->shutdownLock);
 		}
 		vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(params->refresh_period_ms));
 	}
 }
 
 fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color color) {
+	if(framePoolCount >= FP_FRAME_COUNT) {
+		printf("error: fp_create_frame: frame pool full. limit: %d\n", FP_FRAME_COUNT);
+		return 0;
+	}
+
 	unsigned int length = width * height;
 
 	rgb_color* pixels = malloc(length * sizeof(rgb_color));
@@ -216,7 +240,10 @@ bool fp_fset_rect(
 
 	fp_frame* targetFrame = &framePool[id];
 
-	for(int row = 0; row < fmin(frame->length / frame->width, (targetFrame->length / targetFrame->width) - y); row++) {
+	if(frame->width == 0 || targetFrame->width == 0) {
+		printf("oops %d %d %d %d\n", id, targetFrame->width, targetFrame->length, frame->width);
+	}
+	for(int row = 0; row < fmin(frame->length / frame->width, fmax(0, targetFrame->length / targetFrame->width - y)); row++) {
 		memcpy(
 			&targetFrame->pixels[calc_index(x, y + row, targetFrame->width)],
 			&frame->pixels[calc_index(0, row, frame->width)],
@@ -240,8 +267,8 @@ bool fp_ffill_rect(
 	}
 
 	fp_frame* frame = &framePool[id];
-	for(int row = 0; row < height; row++) {
-		for(int col = 0; col < width; col++) {
+	for(int row = 0; row < fmin(height, fmax(0,frame->length / frame->width - y)); row++) {
+		for(int col = 0; col < fmin(width, fmax(0, frame->width - x)); col++) {
 			frame->pixels[calc_index(x + col, y + row, frame->width)] = color;
 		}
 	}
@@ -262,9 +289,9 @@ bool fp_fset_rect_transparent(
 
 	fp_frame* targetFrame = &framePool[id];
 
-	for(int row = 0; row < fmin(frame->length / frame->width, (targetFrame->length / targetFrame->width) - y); row++) {
-		for(int col = 0; col < fmin(frame->width, targetFrame->width - x); col++) {
-			rgb_color pixel = frame->pixels[calc_index(0, row, frame->width)];
+	for(int row = 0; row < fmin(frame->length / frame->width, fmax(0, targetFrame->length / targetFrame->width - y)); row++) {
+		for(int col = 0; col < fmin(frame->width, fmax(0, targetFrame->width - x)); col++) {
+			rgb_color pixel = frame->pixels[calc_index(col, row, frame->width)];
 			if(pixel.fields.b == 0
 				&& pixel.fields.r == 0
 				&& pixel.fields.g == 0) {
@@ -292,7 +319,33 @@ bool fp_fadd_rect(
 	for(int row = 0; row < fmin(frame->length / frame->width, (targetFrame->length / targetFrame->width) - y); row++) {
 		for(int col = 0; col < fmin(frame->width, targetFrame->width - x); col++) {
 			rgb_color colorSum = rgb_add(
-					frame->pixels[calc_index(0, row, frame->width)],
+					frame->pixels[calc_index(col, row, frame->width)],
+					targetFrame->pixels[calc_index(x + col, y + row, targetFrame->width)]
+			);
+			targetFrame->pixels[calc_index(x + col, y + row, targetFrame->width)] = colorSum;
+		}
+	}
+
+	return true;
+}
+
+/** TODO: change these to fp_fapplyfn_rect, take in a function pointer to a function rgb_color fn(rgb_color a, rgb_color b) */
+bool fp_fmultiply_rect(
+		fp_frameid id,
+		unsigned int x,
+		unsigned int y,
+		fp_frame* frame
+		) {
+	if(id >= framePoolCount) {
+		return false;
+	}
+
+	fp_frame* targetFrame = &framePool[id];
+
+	for(int row = 0; row < fmin(frame->length / frame->width, (targetFrame->length / targetFrame->width) - y); row++) {
+		for(int col = 0; col < fmin(frame->width, targetFrame->width - x); col++) {
+			rgb_color colorSum = rgb_multiply(
+					frame->pixels[calc_index(col, row, frame->width)],
 					targetFrame->pixels[calc_index(x + col, y + row, targetFrame->width)]
 			);
 			targetFrame->pixels[calc_index(x + col, y + row, targetFrame->width)] = colorSum;
@@ -332,10 +385,16 @@ fp_view* fp_get_view(fp_viewid id) {
 }
 
 fp_viewid fp_create_view(fp_view_type type, fp_viewid parent, fp_view_data data) {
+	if(viewCount >= FP_VIEW_COUNT) {
+		printf("error: fp_create_view: view pool full. limit: %d\n", FP_VIEW_COUNT);
+		return 0;
+	}
+
 	fp_viewid id = viewCount++;
 
 	viewPool[id].type = type;
 	viewPool[id].parent = parent;
+	viewPool[id].dirty = true;
 	viewPool[id].data = data;
 
 	return id;
@@ -362,6 +421,8 @@ fp_viewid fp_create_screen_view(unsigned int width, unsigned int height) {
 	}
 
 	screenData->frame = fp_create_frame(width, height, rgb(0,0,0));
+	screenData->childView = 0;
+
 	fp_view_data data = { .SCREEN = screenData };
 
 	return fp_create_view(FP_VIEW_SCREEN, 0, data);
@@ -404,7 +465,13 @@ fp_viewid fp_create_anim_view(unsigned int frameCount, unsigned int frameratePer
 	return id;
 }
 
-fp_viewid fp_create_layer_view(unsigned int layerCount, unsigned int width, unsigned int height) {
+/**
+ * @param views - if NULL, a frame_view will be created for each layer.
+ *					otherwise, an array of length layerCount with views to to be used for each layer. if an element is 0 a frame_view will be created.
+ * @param layerWidth - width of created frames
+ * @param layerHeight - height of created frames
+ */
+fp_viewid fp_create_layer_view(fp_viewid* views, unsigned int layerCount, unsigned int width, unsigned int height, unsigned int layerWidth, unsigned int layerHeight) {
 	fp_layer* layers = malloc(layerCount * sizeof(fp_layer));
 	if(!layers) {
 		printf("error: fp_create_layer_view: failed to allocate memory for layers\n");
@@ -420,6 +487,7 @@ fp_viewid fp_create_layer_view(unsigned int layerCount, unsigned int width, unsi
 
 	layerData->layerCount = layerCount;
 	layerData->layers = layers;
+	layerData->frame = fp_create_frame(width, height, rgb(0,0,0));
 
 	fp_view_data data = { .LAYER = layerData };
 	
@@ -427,8 +495,18 @@ fp_viewid fp_create_layer_view(unsigned int layerCount, unsigned int width, unsi
 
 	/* init layers */
 	for(int i = 0; i < layerCount; i++) {
+
+		fp_viewid layerView = 0;
+
+		if(views == NULL || views[i] == 0) {
+			layerView = fp_create_frame_view(layerWidth, layerHeight, rgb(0,0,0));
+		}
+		else {
+			layerView = views[i];
+		}
+
 		fp_layer layer = {
-			fp_create_frame_view(width, height, rgb(0,0,0)),
+			layerView,
 			FP_BLEND_REPLACE,
 			0,
 			0
@@ -450,73 +528,99 @@ bool fp_render_view(fp_viewid id) {
 		case FP_VIEW_FRAME:
 			break;
 		case FP_VIEW_SCREEN:
+			if(view->data.SCREEN->childView) {
+				fp_fset_rect(
+					view->data.SCREEN->frame,
+					0, 0,
+					fp_get_frame(fp_get_view_frame(view->data.SCREEN->childView))
+				);
+			}
+
 			fp_render(view->data.SCREEN->frame);
 			break;
 		case FP_VIEW_ANIM:
-			// todo: make this generic with drawable interface
-			if(view->parent && fp_get_view(view->parent)->type == FP_VIEW_SCREEN) {
-				fp_view* screenView = fp_get_view(view->parent);
-				fp_fset_rect(
-					screenView->data.SCREEN->frame,
-					0, 0,
-					fp_get_frame(fp_get_view(view->data.ANIM->frames[view->data.ANIM->frameIndex])->data.FRAME->frame)
-				);
-
-				/*
-				fp_viewid frameViewId = view->data.ANIM->frames[view->data.ANIM->frameIndex];
-				fp_view* frameView = fp_get_view(frameViewId);
-				fp_frame* frame = fp_get_frame(frameView->data.FRAME->frame);
-				printf("%d, %d, %d: %d %d %d\n",
-						frameView->type,
-						frame->length,
-						frame->width,
-						frame->pixels[0].fields.r,
-						frame->pixels[0].fields.g,
-						frame->pixels[0].fields.b
-				  );
-				  */
-			}
 			break;
 		case FP_VIEW_LAYER:
-			// todo: make this generic with drawable interface
-			if(view->parent && fp_get_view(view->parent)->type == FP_VIEW_SCREEN) {
-				fp_view* screenView = fp_get_view(view->parent);
+			{
+				// clear
+				fp_frame* layerFrame = fp_get_frame(view->data.LAYER->frame);
+				fp_ffill_rect(
+					view->data.LAYER->frame,
+					0, 0,
+					layerFrame->width, layerFrame->length / layerFrame->width,
+					rgb(0, 0, 0)
+				);
 				// draw higher indexed layers last
 				for(int i = 0; i < view->data.LAYER->layerCount; i++) {
 					switch(view->data.LAYER->layers[i].blendMode) {
 						case FP_BLEND_OVERWRITE:
 							fp_fset_rect(
-								screenView->data.SCREEN->frame,
+								view->data.LAYER->frame,
 								view->data.LAYER->layers[i].offsetX,
 								view->data.LAYER->layers[i].offsetY,
-								fp_get_frame(fp_get_view(view->data.LAYER->layers[i].view)->data.FRAME->frame)
+								fp_get_frame(fp_get_view_frame(view->data.LAYER->layers[i].view))
 							);
 							break;
 						case FP_BLEND_REPLACE:
 							fp_fset_rect_transparent(
-								screenView->data.SCREEN->frame,
+								view->data.LAYER->frame,
 								view->data.LAYER->layers[i].offsetX,
 								view->data.LAYER->layers[i].offsetY,
-								fp_get_frame(fp_get_view(view->data.LAYER->layers[i].view)->data.FRAME->frame)
+								fp_get_frame(fp_get_view_frame(view->data.LAYER->layers[i].view))
 							);
 							break;
 						case FP_BLEND_ADD:
 							fp_fadd_rect(
-								screenView->data.SCREEN->frame,
+								view->data.LAYER->frame,
 								view->data.LAYER->layers[i].offsetX,
 								view->data.LAYER->layers[i].offsetY,
-								fp_get_frame(fp_get_view(view->data.LAYER->layers[i].view)->data.FRAME->frame)
+								fp_get_frame(fp_get_view_frame(view->data.LAYER->layers[i].view))
+							);
+							break;
+						case FP_BLEND_MULTIPLY:
+							fp_fmultiply_rect(
+								view->data.LAYER->frame,
+								view->data.LAYER->layers[i].offsetX,
+								view->data.LAYER->layers[i].offsetY,
+								fp_get_frame(fp_get_view_frame(view->data.LAYER->layers[i].view))
 							);
 							break;
 					}
 				}
+				break;
 			}
-			break;
 	}
 
-	if(view->parent) {
-		return fp_render_view(view->parent);
-	}
+	view->dirty = false;
 
 	return true;
+}
+
+void fp_mark_view_dirty(fp_viewid id) {
+	fp_view* view = fp_get_view(id);
+	view->dirty = true;
+	if(view->parent) {
+		fp_mark_view_dirty(view->parent);
+	}
+}
+
+/* can trigger re-render on dirty views */
+fp_frameid fp_get_view_frame(fp_viewid id) {
+	fp_view* view = fp_get_view(id);
+	// TODO: handle invalid view id
+	if(view->dirty) {
+		fp_render_view(id);
+	}
+	switch(view->type) {
+		case FP_VIEW_FRAME:
+			return view->data.FRAME->frame;
+		case FP_VIEW_SCREEN:
+			return view->data.SCREEN->frame;
+		case FP_VIEW_ANIM:
+			return fp_get_view_frame(view->data.ANIM->frames[view->data.ANIM->frameIndex]);
+		case FP_VIEW_LAYER:
+			return view->data.LAYER->frame;
+	}
+
+	return 0;
 }
