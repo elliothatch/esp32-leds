@@ -305,37 +305,34 @@ bool fp_fset_rect_transparent(
 }
 
 bool fp_fadd_rect(
-		fp_frameid id,
-		unsigned int x,
-		unsigned int y,
-		fp_frame* frame
-		) {
-	if(id >= framePoolCount) {
-		return false;
-	}
-
-	fp_frame* targetFrame = &framePool[id];
-
-	for(int row = 0; row < fmin(frame->length / frame->width, (targetFrame->length / targetFrame->width) - y); row++) {
-		for(int col = 0; col < fmin(frame->width, targetFrame->width - x); col++) {
-			rgb_color colorSum = rgb_add(
-					frame->pixels[calc_index(col, row, frame->width)],
-					targetFrame->pixels[calc_index(x + col, y + row, targetFrame->width)]
-			);
-			targetFrame->pixels[calc_index(x + col, y + row, targetFrame->width)] = colorSum;
-		}
-	}
-
-	return true;
+	fp_frameid id,
+	unsigned int x,
+	unsigned int y,
+	/* pointer to the frame to copy from */
+	fp_frame* frame
+) {
+	return fp_fblend_rect(&rgb_addb, id, 255, x, y, frame, 255);
 }
 
-/** TODO: change these to fp_fapplyfn_rect, take in a function pointer to a function rgb_color fn(rgb_color a, rgb_color b) */
 bool fp_fmultiply_rect(
-		fp_frameid id,
-		unsigned int x,
-		unsigned int y,
-		fp_frame* frame
-		) {
+	fp_frameid id,
+	unsigned int x,
+	unsigned int y,
+	/* pointer to the frame to copy from */
+	fp_frame* frame
+) {
+	return fp_fblend_rect(&rgb_multiplyb, id, 255, x, y, frame, 255);
+}
+
+bool fp_fblend_rect(
+	blend_fn blendFn,
+	fp_frameid id,
+	uint8_t alphaTarget,
+	unsigned int x,
+	unsigned int y,
+	fp_frame* frame,
+	uint8_t alphaSrc
+) {
 	if(id >= framePoolCount) {
 		return false;
 	}
@@ -344,11 +341,13 @@ bool fp_fmultiply_rect(
 
 	for(int row = 0; row < fmin(frame->length / frame->width, (targetFrame->length / targetFrame->width) - y); row++) {
 		for(int col = 0; col < fmin(frame->width, targetFrame->width - x); col++) {
-			rgb_color colorSum = rgb_multiply(
+			rgb_color colorResult = (*blendFn)(
 					frame->pixels[calc_index(col, row, frame->width)],
-					targetFrame->pixels[calc_index(x + col, y + row, targetFrame->width)]
+					alphaSrc,
+					targetFrame->pixels[calc_index(x + col, y + row, targetFrame->width)],
+					alphaTarget
 			);
-			targetFrame->pixels[calc_index(x + col, y + row, targetFrame->width)] = colorSum;
+			targetFrame->pixels[calc_index(x + col, y + row, targetFrame->width)] = colorResult;
 		}
 	}
 
@@ -428,7 +427,7 @@ fp_viewid fp_create_screen_view(unsigned int width, unsigned int height) {
 	return fp_create_view(FP_VIEW_SCREEN, 0, data);
 }
 
-fp_viewid fp_create_anim_view(unsigned int frameCount, unsigned int frameratePeriodMs, unsigned int width, unsigned int height) {
+fp_viewid fp_create_anim_view(fp_viewid* views, unsigned int frameCount, unsigned int frameratePeriodMs, unsigned int width, unsigned int height) {
 	fp_viewid* frames = malloc(frameCount * sizeof(fp_viewid));
 	if(!frames) {
 		printf("error: fp_create_anim_view: failed to allocate memory for frames\n");
@@ -452,7 +451,12 @@ fp_viewid fp_create_anim_view(unsigned int frameCount, unsigned int frameratePer
 
 	/* init frames */
 	for(int i = 0; i < frameCount; i++) {
-		frames[i] = fp_create_frame_view(width, height, rgb(0,0,0));
+		if(views == NULL || views[i] == 0) {
+			frames[i] = fp_create_frame_view(width, height, rgb(0,0,0));
+		}
+		else {
+			frames[i] = views[i];
+		}
 		(&viewPool[frames[i]])->parent = id;
 	}
 
@@ -509,7 +513,8 @@ fp_viewid fp_create_layer_view(fp_viewid* views, unsigned int layerCount, unsign
 			layerView,
 			FP_BLEND_REPLACE,
 			0,
-			0
+			0,
+			255
 		};
 		layers[i] = layer;
 		(&viewPool[layer.view])->parent = id;
@@ -550,6 +555,7 @@ bool fp_render_view(fp_viewid id) {
 					layerFrame->width, layerFrame->length / layerFrame->width,
 					rgb(0, 0, 0)
 				);
+
 				// draw higher indexed layers last
 				for(int i = 0; i < view->data.LAYER->layerCount; i++) {
 					switch(view->data.LAYER->layers[i].blendMode) {
@@ -585,6 +591,20 @@ bool fp_render_view(fp_viewid id) {
 								fp_get_frame(fp_get_view_frame(view->data.LAYER->layers[i].view))
 							);
 							break;
+						case FP_BLEND_ALPHA:
+							{
+								uint8_t srcAlpha = view->data.LAYER->layers[i].alpha;
+								fp_fblend_rect(
+									&rgb_alpha,
+									view->data.LAYER->frame,
+									255,
+									view->data.LAYER->layers[i].offsetX,
+									view->data.LAYER->layers[i].offsetY,
+									fp_get_frame(fp_get_view_frame(view->data.LAYER->layers[i].view)),
+									srcAlpha
+								);
+								break;
+							}
 					}
 				}
 				break;

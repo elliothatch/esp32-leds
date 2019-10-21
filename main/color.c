@@ -60,11 +60,17 @@ rgb_color hsv_to_rgb(hsv_color color) {
 }
 
 rgb_color rgb(uint8_t r, uint8_t g, uint8_t b) {
-    rgb_color color = {{ b, r, g }};
+    rgb_color color = {.fields={ b, r, g }};
     return color;
 }
+
+rgb_color rgbMap(uint16_t index, uint8_t alpha) {
+    rgb_color color = {.mapFields={ index, alpha }};
+    return color;
+}
+
 hsv_color hsv(uint8_t h, uint8_t s, uint8_t v) {
-    hsv_color color = {{ h, s, v }};
+    hsv_color color = {.fields={ h, s, v }};
     return color;
 }
 
@@ -77,11 +83,43 @@ rgb_color rgb_add(rgb_color a, rgb_color b) {
 	return color;
 }
 
+/** alpha values are used to interpolate each color field between 0 and its value, allowing "partial application" of multiply */
+rgb_color rgb_addb(rgb_color a, uint8_t aAlpha, rgb_color b, uint8_t bAlpha) {
+	rgb_color color = {{
+		fmin(aAlpha*a.fields.b/255 + bAlpha*b.fields.b/255, 255),
+		fmin(aAlpha*a.fields.r/255 + bAlpha*b.fields.r/255, 255),
+		fmin(aAlpha*a.fields.g/255 + bAlpha*b.fields.g/255, 255),
+	}};
+	return color;
+}
+
+/** alpha values are used to interpolate each color field between 255 and its value, allowing "partial application" of multiply
+ * only one alpha value should be less than 255, or you will experience "brightening" instead. this is because an alpha value of 0 means the color acts as white during the multiply
+ */
+rgb_color rgb_multiplyb(rgb_color a, uint8_t aAlpha, rgb_color b, uint8_t bAlpha) {
+	rgb_color color = {{
+		fmin((255 - (255 - a.fields.b)*aAlpha/255) * (255 - (255 - b.fields.b)*bAlpha/255) / 255, 255),
+		fmin((255 - (255 - a.fields.r)*aAlpha/255) * (255 - (255 - b.fields.r)*bAlpha/255) / 255, 255),
+		fmin((255 - (255 - a.fields.g)*aAlpha/255) * (255 - (255 - b.fields.g)*bAlpha/255) / 255, 255),
+	}};
+	return color;
+}
+
 rgb_color rgb_multiply(rgb_color a, rgb_color b) {
 	rgb_color color = {{
 		a.fields.b * b.fields.b / 255,
 		a.fields.r * b.fields.r / 255,
 		a.fields.g * b.fields.g / 255,
+	}};
+	return color;
+}
+
+rgb_color rgb_alpha(rgb_color a, uint8_t aAlpha, rgb_color b, uint8_t bAlpha) {
+	uint8_t outAlpha = aAlpha + bAlpha * (255 - aAlpha) / 255;
+	rgb_color color = {{
+		(a.fields.b * aAlpha / 255 + b.fields.b * bAlpha / 255 * (255 - aAlpha) / 255) * 255 / outAlpha,
+		(a.fields.r * aAlpha / 255 + b.fields.r * bAlpha / 255 * (255 - aAlpha) / 255) * 255 / outAlpha,
+		(a.fields.g * aAlpha / 255 + b.fields.g * bAlpha / 255 * (255 - aAlpha) / 255) * 255 / outAlpha,
 	}};
 	return color;
 }

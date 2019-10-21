@@ -1,3 +1,23 @@
+# install
+Install the ESP32 IDF library as described in the [documentation](https://docs.espressif.com/projects/esp-idf/en/latest/).
+
+# development
+Enable IDF environment:
+```bash
+. $IDF_PATH/export.sh
+```
+
+# build 
+```bash
+idf.py build
+```
+
+or
+
+```bash
+idf.py flash
+```
+
 # LEDs
 Test project for working with NeoPixels on the ESP32
 
