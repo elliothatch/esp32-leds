@@ -132,7 +132,8 @@ typedef enum {
 	FP_VIEW_FRAME, /* just a frame */
 	FP_VIEW_SCREEN, /* represents the physical LED screen. rendering will render to the LEDs  */
 	FP_VIEW_ANIM,
-	FP_VIEW_LAYER
+	FP_VIEW_LAYER,
+	FP_VIEW_TRANSITION
 } fp_view_type;
 
 typedef struct {
@@ -177,11 +178,18 @@ typedef struct {
 
 } fp_view_layer_data;
 
-typedef struct {
-	/* mapViews are anim_views where each frame contains data (mapFields) about how one view is mapped onto the transition
+	/* contains two anim_views where each frame contains data (mapFields) about how one view is mapped onto the transition
 	 */
-	fp_viewid mapViewA;
-	fp_viewid mapViewB;
+typedef struct {
+	fp_viewid viewA;
+	fp_viewid viewB;
+} fp_transition;
+
+typedef struct {
+	unsigned int pageCount;
+	fp_viewid* pages;
+	unsigned int pageIndex;
+	fp_transition transition;
 	rgb_color (*blend_fn)(rgb_color a, uint16_t aWeight, rgb_color b, uint16_t bWeight);
 	/** stores the result of render */
 	fp_frameid frame;
@@ -210,9 +218,14 @@ fp_viewid fp_create_screen_view(unsigned int width, unsigned int height);
 fp_viewid fp_create_anim_view(fp_viewid* views, unsigned int frameCount, unsigned int frameratePeriodMs, unsigned int width, unsigned int height);
 fp_viewid fp_create_layer_view(fp_viewid* views, unsigned int layerCount, unsigned int width, unsigned int height, unsigned int layerWidth, unsigned int layerHeight);
 
+/* simple sliding transition. starts on viewA and slides left one pixel each frame to viewB */
+fp_viewid fp_create_transition_view(fp_viewid* pages, unsigned int pageCount, fp_transition transition, unsigned int width, unsigned int height);
+
 fp_view* fp_get_view(fp_viewid id);
 bool fp_render_view(fp_viewid id);
 void fp_mark_view_dirty(fp_viewid id);
+
+fp_transition fp_create_sliding_transition(unsigned int width, unsigned int height, unsigned int frameratePeriodMs);
 
 // returns a frame containing the contents of that view. compositing views (e.g. layer_view) may 
 fp_frameid fp_get_view_frame(fp_viewid id);

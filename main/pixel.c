@@ -240,9 +240,6 @@ bool fp_fset_rect(
 
 	fp_frame* targetFrame = &framePool[id];
 
-	if(frame->width == 0 || targetFrame->width == 0) {
-		printf("oops %d %d %d %d\n", id, targetFrame->width, targetFrame->length, frame->width);
-	}
 	for(int row = 0; row < fmin(frame->length / frame->width, fmax(0, targetFrame->length / targetFrame->width - y)); row++) {
 		memcpy(
 			&targetFrame->pixels[calc_index(x, y + row, targetFrame->width)],
@@ -523,6 +520,67 @@ fp_viewid fp_create_layer_view(fp_viewid* views, unsigned int layerCount, unsign
 	return id;
 }
 
+
+fp_viewid fp_create_transition_view(
+	fp_viewid* pages,
+	unsigned int pageCount,
+	fp_transition transition,
+	unsigned int width,
+	unsigned int height
+) {
+
+	fp_viewid* pages = malloc(pageCount * sizeof(fp_viewid));
+	if(!pages) {
+		printf("error: fp_create_transition_view: failed to allocate memory for pages\n");
+		return 0;
+	}
+
+	fp_view_transition_data* transitionData = malloc(sizeof(fp_view_transition_data));
+	if(!transitionData) {
+		printf("error: fp_create_transition_view: failed to allocate memory for transitionData\n");
+		free(pages);
+		return 0;
+	}
+
+	transitionData->pageCount = pageCount;
+	transitionData->pages = pages;
+	transitionData->pageIndex = 0;
+	transitionData->frame = fp_create_frame(width, height, rgb(0,0,0));
+
+	if(transition.viewA == 0) {
+		/* transitionData->mapViewA = fp_create_anim_view(NULL, 8, width, height, rgb(0,0,0); */
+	}
+
+	if(transition.viewB == 0) {
+		/* transitionData->mapViewA = fp_create_anim_view(NULL, 8, width, height, rgb(0,0,0); */
+	}
+
+	transitionData->transition = transition;
+	transitionData->blendFn = rgb_alpha;
+
+	fp_view_data data = { .TRANSITION = transitionData };
+	
+	fp_viewid id = fp_create_view(FP_VIEW_TRANSITION, 0, data);
+
+	/* init pages */
+	for(int i = 0; i < pageCount; i++) {
+
+		fp_viewid pageView = 0;
+
+		if(pages == NULL || pages[i] == 0) {
+			pageView = fp_create_frame_view(width, height, rgb(0,0,0));
+		}
+		else {
+			pageView = pages[i];
+		}
+
+		pages[i] = pageView;
+		(&viewPool[pageView])->parent = id;
+	}
+
+	return id;
+}
+
 bool fp_render_view(fp_viewid id) {
 	if(id >= viewCount) {
 		return false;
@@ -609,6 +667,9 @@ bool fp_render_view(fp_viewid id) {
 				}
 				break;
 			}
+		case FP_VIEW_TRANSITION:
+		
+			break;
 	}
 
 	view->dirty = false;
@@ -643,4 +704,67 @@ fp_frameid fp_get_view_frame(fp_viewid id) {
 	}
 
 	return 0;
+}
+
+fp_transition fp_create_sliding_transition(unsigned int width, unsigned int height, unsigned int frameratePeriodMs) {
+	unsigned int frameCount = width + 1;
+
+	fp_transition transition = {
+		fp_create_anim_view(NULL, frameCount, frameratePeriodMs, width, height),
+		fp_create_anim_view(NULL, frameCount, frameratePeriodMs, width, height)
+	};
+
+	fp_view* transitionViewA = fp_get_view(transition.viewA);
+	fp_view* transitionViewB = fp_get_view(transition.viewB);
+
+	for(int i = 0; i < frameCount; i++) {
+		fp_frame* frameA = fp_get_view_frame(transitionViewA->data.ANIM->frames[i]);
+		fp_frame* frameB = fp_get_view_frame(transitionViewB->data.ANIM->frames[i]);
+
+		for(int row = 0; row < height; row++) {
+			for(int col = 0; col < width; col++) {
+				// TODO: calculate indexes for the transitions
+				// it might be useful to write a helper function that generates these?
+				unsigned int aIndex = calc_index(col, row, width);
+				unsigned int aAlpha = 0;
+				if(col >= i) {
+					aAlpha = 255;
+				}
+
+				unsigned int bIndex = 0;
+				unsigned int bAlpha = 0;
+				if(col >= (width - i)) {
+					bAlpha = 255;
+				}
+
+				frameA->pixels[calc_index(col, row, width)].mapFields.index = aIndex;
+				frameA->pixels[calc_index(col, row, width)].mapFields.index = aAlpha;
+
+				frameB->pixels[calc_index(col, row, width)].mapFields.index = bIndex;
+				frameB->pixels[calc_index(col, row, width)].mapFields.index = bAlpha;
+			}
+		}
+	}
+
+	/*
+	 0 1
+	 2 3
+
+	A:
+	0 1  1 0  0 0
+	2 3  3 0  0 0
+	
+	1 1  1 0  0 0
+	1 1  1 0  0 0
+
+	B:
+	0 0  0 0  0 1
+	0 0  0 2  2 3
+
+	0 0  0 1  1 1
+	0 0  0 1  1 1
+	
+	 */
+
+	return transition;
 }
