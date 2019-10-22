@@ -54,12 +54,15 @@
 
 #define FP_FRAME_COUNT 512
 #define FP_VIEW_COUNT 256
-#define FP_PENDING_VIEW_RENDER_COUNT 16
+#define FP_PENDING_VIEW_RENDER_COUNT 64
+
+#define DEBUG true
 
 typedef struct {
 	fp_viewid view;
 	TickType_t tick; /* the view will be as soon as possible after this tick */
 } fp_pending_view_render;
+
 
 unsigned int calc_index(unsigned int x, unsigned int y, unsigned int width) {
 	return y * width + x % width;
@@ -78,6 +81,35 @@ fp_pending_view_render pendingViewRenderPool[FP_PENDING_VIEW_RENDER_COUNT];
 
 /** locks fp_create_frame. allows multiple tasks to safely create frames */
 SemaphoreHandle_t createFrameLock = NULL;
+
+bool fp_queue_render(fp_viewid view, TickType_t tick) {
+	if(pendingViewRenderCount >= FP_PENDING_VIEW_RENDER_COUNT) {
+		printf("error: fp_queue_render: pending render pool full. limit: %d\n", FP_PENDING_VIEW_RENDER_COUNT);
+		return false;
+	}
+
+	unsigned int nextRender = (pendingViewRenderIndex + pendingViewRenderCount) % FP_PENDING_VIEW_RENDER_COUNT;
+	pendingViewRenderCount++;
+	pendingViewRenderPool[nextRender].view = view;
+	pendingViewRenderPool[nextRender].tick = tick;
+
+	return true;
+}
+
+fp_pending_view_render fp_dequeue_render() {
+
+	fp_pending_view_render render = pendingViewRenderPool[pendingViewRenderIndex];
+	if(pendingViewRenderCount == 0) {
+		render.view = 0;
+		render.tick = 0;
+		return render;
+	}
+
+	pendingViewRenderIndex = (pendingViewRenderIndex + 1) % FP_PENDING_VIEW_RENDER_COUNT;
+	pendingViewRenderCount--;
+	
+	return render;
+}
 
 void fp_task_render(void *pvParameters) {
 	const fp_task_render_params* params = (const fp_task_render_params*) pvParameters;
@@ -133,26 +165,36 @@ void fp_task_render(void *pvParameters) {
 		/* process each pending render by dequeuing. requeue if the render is still pending */
 		/* TODO: just us a vector for this? */
 		int originalPendingViewRenderCount = pendingViewRenderCount;
-		int originalPendingViewRenderIndex = pendingViewRenderIndex;
 		for(int i = 0; i < originalPendingViewRenderCount; i++) {
-			fp_pending_view_render pendingRender = pendingViewRenderPool[(i + originalPendingViewRenderIndex) % FP_PENDING_VIEW_RENDER_COUNT];
-
-			// dequeue pending render
-			pendingViewRenderIndex = (pendingViewRenderIndex + 1) % FP_PENDING_VIEW_RENDER_COUNT;
-			pendingViewRenderCount--;
-
+			fp_pending_view_render pendingRender = fp_dequeue_render();
 			if(pendingRender.tick <= currentTick) {
 				fp_view* view = fp_get_view(pendingRender.view);
 
 				if(view->type == FP_VIEW_ANIM) {
 					// TODO: move this elsewhere
-					// NOTE: advances frame BEFORE render, so intermediate calls to render on this frame won't change until the next pending render */
-					view->data.ANIM->frameIndex = (view->data.ANIM->frameIndex + 1) % view->data.ANIM->frameCount;
-					// queue up the next frame
-					unsigned int nextRender = (pendingViewRenderIndex + pendingViewRenderCount) % FP_PENDING_VIEW_RENDER_COUNT;
-					pendingViewRenderCount++;
-					pendingViewRenderPool[nextRender].view = pendingRender.view;
-					pendingViewRenderPool[nextRender].tick = currentTick + pdMS_TO_TICKS(view->data.ANIM->frameratePeriodMs);
+					if(view->data.ANIM->isPlaying) {
+						view->data.ANIM->frameIndex = (view->data.ANIM->frameIndex + 1) % view->data.ANIM->frameCount;
+
+						if(view->data.ANIM->frameIndex < view->data.ANIM->frameCount - 1 || view->data.ANIM->loop) {
+							fp_queue_render(pendingRender.view, currentTick + pdMS_TO_TICKS(view->data.ANIM->frameratePeriodMs)); 
+						}
+						else {
+							view->data.ANIM->isPlaying = false;
+						}
+					}
+				}
+				if(view->type == FP_VIEW_TRANSITION) {
+					if(view->data.TRANSITION->loop != 0) {
+						if(view->data.TRANSITION->loop > 0) {
+							fp_transition_next(pendingRender.view);
+						}
+						else {
+							fp_transition_prev(pendingRender.view);
+						}
+
+						// queue next transition
+						fp_queue_render(pendingRender.view, currentTick + pdMS_TO_TICKS(view->data.TRANSITION->transitionPeriodMs));
+					}
 				}
 
 				fp_mark_view_dirty(pendingRender.view); 
@@ -216,6 +258,11 @@ fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color co
 	/* 	framePool[id].length, */
 	/* 	framePool[id].width */
 	/* ); */
+
+	if(DEBUG) {
+		printf("create frame %d: length: %d\n", id, length);
+	}
+
 	return id;
 }
 
@@ -240,9 +287,6 @@ bool fp_fset_rect(
 
 	fp_frame* targetFrame = &framePool[id];
 
-	if(frame->width == 0 || targetFrame->width == 0) {
-		printf("oops %d %d %d %d\n", id, targetFrame->width, targetFrame->length, frame->width);
-	}
 	for(int row = 0; row < fmin(frame->length / frame->width, fmax(0, targetFrame->length / targetFrame->width - y)); row++) {
 		memcpy(
 			&targetFrame->pixels[calc_index(x, y + row, targetFrame->width)],
@@ -396,6 +440,10 @@ fp_viewid fp_create_view(fp_view_type type, fp_viewid parent, fp_view_data data)
 	viewPool[id].dirty = true;
 	viewPool[id].data = data;
 
+	if(DEBUG) {
+		printf("create view %d: type: %d\n", id, type);
+	}
+
 	return id;
 }
 
@@ -445,6 +493,8 @@ fp_viewid fp_create_anim_view(fp_viewid* views, unsigned int frameCount, unsigne
 	animData->frames = frames;
 	animData->frameIndex = 0;
 	animData->frameratePeriodMs = frameratePeriodMs;
+	animData->isPlaying = false;
+	animData->loop = false;
 
 	fp_view_data data = { .ANIM = animData };
 	fp_viewid id = fp_create_view(FP_VIEW_ANIM, 0, data);
@@ -460,13 +510,35 @@ fp_viewid fp_create_anim_view(fp_viewid* views, unsigned int frameCount, unsigne
 		(&viewPool[frames[i]])->parent = id;
 	}
 
-	// for now, immediately queue the animation for render
-	unsigned int pendingRender = (pendingViewRenderIndex + pendingViewRenderCount) % FP_PENDING_VIEW_RENDER_COUNT;
-	pendingViewRenderCount++;
-	pendingViewRenderPool[pendingRender].view = id;
-	pendingViewRenderPool[pendingRender].tick = xTaskGetTickCount() + pdMS_TO_TICKS(frameratePeriodMs);
-
 	return id;
+}
+
+bool fp_play_once_anim(fp_viewid animView) {
+	TickType_t currentTick = xTaskGetTickCount();
+	fp_view* view = fp_get_view(animView);
+
+	view->data.ANIM->isPlaying = true;
+	view->data.ANIM->loop = false;
+	view->data.ANIM->frameIndex = 0;
+	fp_mark_view_dirty(animView);
+	return fp_queue_render(animView, currentTick + pdMS_TO_TICKS(view->data.ANIM->frameratePeriodMs)); 
+}
+
+/** queues up next frame of animation */
+bool fp_play_anim(fp_viewid animView) {
+	TickType_t currentTick = xTaskGetTickCount();
+	fp_view* view = fp_get_view(animView);
+
+	view->data.ANIM->isPlaying = true;
+	view->data.ANIM->loop = true;
+	return fp_queue_render(animView, currentTick + pdMS_TO_TICKS(view->data.ANIM->frameratePeriodMs)); 
+}
+
+bool fp_pause_anim(fp_viewid animView) {
+	fp_view* view = fp_get_view(animView);
+	view->data.ANIM->isPlaying = false;
+
+	return true;
 }
 
 /**
@@ -521,6 +593,104 @@ fp_viewid fp_create_layer_view(fp_viewid* views, unsigned int layerCount, unsign
 	}
 
 	return id;
+}
+
+
+fp_viewid fp_create_transition_view(
+	fp_viewid* pageIds,
+	unsigned int pageCount,
+	fp_transition transition,
+	unsigned int transitionPeriodMs,
+	unsigned int width,
+	unsigned int height
+) {
+
+	fp_viewid* pages = malloc(pageCount * sizeof(fp_viewid));
+	if(!pages) {
+		printf("error: fp_create_transition_view: failed to allocate memory for pages\n");
+		return 0;
+	}
+
+	fp_view_transition_data* transitionData = malloc(sizeof(fp_view_transition_data));
+	if(!transitionData) {
+		printf("error: fp_create_transition_view: failed to allocate memory for transitionData\n");
+		free(pages);
+		return 0;
+	}
+
+	transitionData->pageCount = pageCount;
+	transitionData->pages = pages;
+	transitionData->pageIndex = 0;
+	transitionData->previousPageIndex = 0;
+	transitionData->frame = fp_create_frame(width, height, rgb(0,0,0));
+	
+
+	if(transition.viewA == 0 && transition.viewB == 0) {
+		// TODO: handle/error when missing one view from transition
+		transition = fp_create_sliding_transition( width, height, 1000/2);
+	}
+
+	transitionData->transition = transition;
+	transitionData->blendFn = &rgb_alpha;
+	transitionData->transitionPeriodMs = transitionPeriodMs;
+
+	fp_view_data data = { .TRANSITION = transitionData };
+	
+	fp_viewid id = fp_create_view(FP_VIEW_TRANSITION, 0, data);
+
+	/* init pages */
+	for(int i = 0; i < pageCount; i++) {
+
+		fp_viewid pageView = 0;
+
+		if(pageIds == NULL || pageIds[i] == 0) {
+			pageView = fp_create_frame_view(width, height, rgb(0,0,0));
+		}
+		else {
+			pageView = pageIds[i];
+		}
+
+		pages[i] = pageView;
+		(&viewPool[pageView])->parent = id;
+	}
+
+	fp_get_view(transition.viewA)->parent = id;
+	fp_get_view(transition.viewB)->parent = id;
+
+	return id;
+}
+
+bool fp_transition_loop(fp_viewid transitionView, bool reverse) {
+	fp_view* view = fp_get_view(transitionView);
+	TickType_t currentTick = xTaskGetTickCount();
+
+	view->data.TRANSITION->loop = 1 - reverse*2;
+	return fp_queue_render(transitionView, currentTick + pdMS_TO_TICKS(view->data.TRANSITION->transitionPeriodMs)); 
+}
+
+bool fp_transition_set(fp_viewid transitionView, unsigned int pageIndex) {
+	fp_view* view = fp_get_view(transitionView);
+
+	view->data.TRANSITION->previousPageIndex = view->data.TRANSITION->pageIndex;
+	view->data.TRANSITION->pageIndex = pageIndex % view->data.TRANSITION->pageCount;
+	return fp_play_once_anim(view->data.TRANSITION->transition.viewA)
+		&& fp_play_once_anim(view->data.TRANSITION->transition.viewB);
+}
+
+bool fp_transition_next(fp_viewid transitionView) {
+	fp_view* view = fp_get_view(transitionView);
+	return fp_transition_set(transitionView, (view->data.TRANSITION->pageIndex + 1) % view->data.TRANSITION->pageCount);
+}
+
+bool fp_transition_prev(fp_viewid transitionView) {
+	fp_view* view = fp_get_view(transitionView);
+	return fp_transition_set(
+		transitionView,
+		 (
+			(view->data.TRANSITION->pageIndex - 1) % view->data.TRANSITION->pageCount
+			 + view->data.TRANSITION->pageCount
+		 )% view->data.TRANSITION->pageCount
+	);
 }
 
 bool fp_render_view(fp_viewid id) {
@@ -609,6 +779,48 @@ bool fp_render_view(fp_viewid id) {
 				}
 				break;
 			}
+		case FP_VIEW_TRANSITION:
+			// TODO: add anim_view start/stop/pause functions
+			// add nextPage, previousPage, setPage, cycle functions that trigger transition animation playback
+			{
+				fp_frame* frame = fp_get_frame(view->data.TRANSITION->frame);
+				fp_frame* frameA = fp_get_frame(fp_get_view_frame(view->data.TRANSITION->pages[view->data.TRANSITION->previousPageIndex]));
+				fp_frame* frameB = fp_get_frame(fp_get_view_frame(view->data.TRANSITION->pages[view->data.TRANSITION->pageIndex]));
+
+				fp_frame* transitionA = fp_get_frame(fp_get_view_frame(view->data.TRANSITION->transition.viewA));
+				fp_frame* transitionB = fp_get_frame(fp_get_view_frame(view->data.TRANSITION->transition.viewB));
+				
+
+				for(int row = 0; row < fp_frame_height(frame); row++) {
+					for(int col = 0; col < frame->width; col++) {
+						rgb_color colorA = rgb(0, 0, 0);
+						rgb_color colorB = rgb(0, 0, 0);
+						uint8_t alphaA = 0;
+						uint8_t alphaB = 0;
+
+						if(row < fp_frame_height(transitionA) && col < transitionA->width) {
+							uint16_t indexA = transitionA->pixels[calc_index(col, row, transitionA->width)].mapFields.index;
+							if(indexA < frameA->length) {
+								colorA = frameA->pixels[indexA];
+							}
+							alphaA = transitionA->pixels[calc_index(col, row, transitionA->width)].mapFields.alpha;
+						}
+
+						if(row < fp_frame_height(transitionB) && col < transitionB->width) {
+							uint16_t indexB = transitionB->pixels[calc_index(col, row, transitionB->width)].mapFields.index;
+							if(indexB < frameB->length) {
+								colorB = frameB->pixels[indexB];
+							}
+							alphaB = transitionB->pixels[calc_index(col, row, transitionB->width)].mapFields.alpha;
+						}
+						
+
+						frame->pixels[calc_index(col, row, frame->width)] =
+							(*view->data.TRANSITION->blendFn)(colorA, alphaA, colorB, alphaB);
+					}
+				}
+				break;
+			}
 	}
 
 	view->dirty = false;
@@ -640,7 +852,76 @@ fp_frameid fp_get_view_frame(fp_viewid id) {
 			return fp_get_view_frame(view->data.ANIM->frames[view->data.ANIM->frameIndex]);
 		case FP_VIEW_LAYER:
 			return view->data.LAYER->frame;
+		case FP_VIEW_TRANSITION:
+			return view->data.TRANSITION->frame;
 	}
 
 	return 0;
+}
+
+fp_transition fp_create_sliding_transition(unsigned int width, unsigned int height, unsigned int frameratePeriodMs) {
+	unsigned int frameCount = width + 1;
+
+	fp_transition transition = {
+		fp_create_anim_view(NULL, frameCount, frameratePeriodMs, width, height),
+		fp_create_anim_view(NULL, frameCount, frameratePeriodMs, width, height)
+	};
+
+	fp_view* transitionViewA = fp_get_view(transition.viewA);
+	fp_view* transitionViewB = fp_get_view(transition.viewB);
+
+	for(int i = 0; i < frameCount; i++) {
+		fp_frame* frameA = fp_get_frame(fp_get_view_frame(transitionViewA->data.ANIM->frames[i]));
+		fp_frame* frameB = fp_get_frame(fp_get_view_frame(transitionViewB->data.ANIM->frames[i]));
+
+		for(int row = 0; row < height; row++) {
+			for(int col = 0; col < width; col++) {
+				// TODO: calculate indexes for the transitions
+				// it might be useful to write a helper function that generates these?
+				unsigned int aIndex = calc_index(col, row, width);
+				unsigned int aAlpha = 0;
+				if(col < (width - i)) {
+					aAlpha = 255;
+				}
+
+				unsigned int bIndex = 0;
+				unsigned int bAlpha = 0;
+				if(col >= (width - i)) {
+					bAlpha = 255;
+				}
+
+				frameA->pixels[calc_index(col, row, width)].mapFields.index = aIndex;
+				frameA->pixels[calc_index(col, row, width)].mapFields.alpha = aAlpha;
+
+				frameB->pixels[calc_index(col, row, width)].mapFields.index = bIndex;
+				frameB->pixels[calc_index(col, row, width)].mapFields.alpha = bAlpha;
+			}
+		}
+	}
+
+	/*
+	 0 1
+	 2 3
+
+	A:
+	0 1  1 0  0 0
+	2 3  3 0  0 0
+	
+	1 1  1 0  0 0
+	1 1  1 0  0 0
+
+	B:
+	0 0  0 0  0 1
+	0 0  0 2  2 3
+
+	0 0  0 1  1 1
+	0 0  0 1  1 1
+	
+	 */
+
+	return transition;
+}
+
+unsigned int fp_frame_height(fp_frame* frame) {
+	return frame->length / frame->width;
 }

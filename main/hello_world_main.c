@@ -16,9 +16,11 @@
 
 #define LED_QUEUE_LENGTH 16 
 
-fp_viewid create_animation_test(fp_viewid screenViewId);
-fp_viewid create_animated_layer_test(fp_viewid screenViewId);
-fp_viewid create_layer_alpha_test(fp_viewid screenViewId);
+fp_viewid create_animation_test();
+fp_viewid create_animated_layer_test();
+fp_viewid create_layer_alpha_test();
+fp_viewid create_transition_test();
+fp_viewid create_animated_transition_test();
 
 void app_main()
 {
@@ -74,9 +76,11 @@ void app_main()
 
 	fp_viewid screenViewId = fp_create_screen_view(8, 8);
 
-	/* fp_viewid mainViewId = create_animation_test(screenViewId); */
-	fp_viewid mainViewId = create_animated_layer_test(screenViewId);
-	/* fp_viewid mainViewId = create_layer_alpha_test(screenViewId); */
+	/* fp_viewid mainViewId = create_animation_test(); */
+	/* fp_viewid mainViewId = create_animated_layer_test(); */
+	/* fp_viewid mainViewId = create_layer_alpha_test(); */
+	/* fp_viewid mainViewId = create_transition_test(); */
+	fp_viewid mainViewId = create_animated_transition_test();
 
 
 	fp_view* screenView = fp_get_view(screenViewId);
@@ -138,6 +142,9 @@ fp_viewid create_animation_test(fp_viewid screenView) {
 			);
 		}
 	}
+
+	fp_play_anim(animViewId);
+
 	return animViewId;
 }
 
@@ -145,7 +152,7 @@ fp_viewid create_animated_layer_test(fp_viewid screenView) {
 	const unsigned int layerCount = 5;
 
 	fp_viewid animViewIds[layerCount];
-	const unsigned int frameCount = 30;
+	const unsigned int frameCount = 60;
 
 	for(int layerIndex = 0; layerIndex < layerCount - 1; layerIndex++) {
 		animViewIds[layerIndex] = fp_create_anim_view(NULL, frameCount, 2000/frameCount, 4, 4);
@@ -206,7 +213,7 @@ fp_viewid create_animated_layer_test(fp_viewid screenView) {
 	animViewIds[4] = fp_create_anim_view(NULL, maskFrameCount, 4000/maskFrameCount, 4, 4);
 	fp_view* maskAnimView = fp_get_view(animViewIds[4]);
 	for(int i = 0; i < maskFrameCount; i++) {
-		unsigned int brightness = 50*abs(i - maskFrameCount/2)/(maskFrameCount/2);
+		unsigned int brightness = 50*abs(i - (int)maskFrameCount/2)/(maskFrameCount/2);
 		fp_ffill_rect(
 			fp_get_view_frame(maskAnimView->data.ANIM->frames[i]),
 			0, 0,
@@ -277,7 +284,7 @@ fp_viewid create_animated_layer_test(fp_viewid screenView) {
 	return layerViewId;
 }
 
-fp_viewid create_layer_alpha_test(fp_viewid screenViewId) {
+fp_viewid create_layer_alpha_test() {
 
 	const unsigned int layerCount = 4;
 
@@ -375,4 +382,71 @@ fp_viewid create_layer_alpha_test(fp_viewid screenViewId) {
 	*/
 
 	return layerViewId;
+}
+
+fp_viewid create_transition_test() {
+	unsigned int pageCount = 3;
+
+	fp_transition transition = fp_create_sliding_transition(8, 8, 1000/8);
+	fp_viewid transitionViewId = fp_create_transition_view(NULL, pageCount, transition, 2000, 8, 8);
+	fp_view* transitionView = fp_get_view(transitionViewId);
+
+	rgb_color colors[] = {
+		rgb(100, 0, 0),
+		rgb(0, 100, 0),
+		rgb(0, 0, 100)
+	};
+
+	for(int i = 0; i < pageCount; i++) {
+		fp_ffill_rect(
+			fp_get_view_frame(transitionView->data.TRANSITION->pages[i]),
+			0, 0,
+			8, 8,
+			colors[i]);
+	}
+
+	fp_transition_loop(transitionViewId, false);
+
+	return transitionViewId;
+}
+
+fp_viewid create_animated_transition_test() {
+	unsigned int pageCount = 3;
+
+	fp_viewid animViewIds[pageCount];
+	const unsigned int frameCount = 60;
+
+	for(int pageIndex = 0; pageIndex < pageCount; pageIndex++) {
+		animViewIds[pageIndex] = fp_create_anim_view(NULL, frameCount, 1000/frameCount, 8, 8);
+		fp_view* animView = fp_get_view(animViewIds[pageIndex]);
+
+		for(int i = 0; i < frameCount; i++) {
+			fp_ffill_rect(
+				fp_get_view_frame(animView->data.ANIM->frames[i]),
+				0, 0,
+				8, 8,
+				hsv_to_rgb(hsv(
+					255*pageIndex/pageCount
+					+ (uint8_t)(255.0/(pageCount*4) * (cos(2.0*M_PI * (double)i/(double)frameCount)+1.0) / 2),
+					255,
+					25))
+			);
+		}
+
+		fp_play_anim(animViewIds[pageIndex]);
+	}
+
+	fp_viewid pageViews[] = {
+		animViewIds[0],
+		animViewIds[1],
+		animViewIds[2]
+	};
+
+
+	fp_transition transition = fp_create_sliding_transition(8, 8, 1000/8);
+	fp_viewid transitionViewId = fp_create_transition_view(pageViews, pageCount, transition, 2000, 8, 8);
+
+	fp_transition_loop(transitionViewId, false);
+
+	return transitionViewId;
 }

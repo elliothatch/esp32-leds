@@ -132,7 +132,8 @@ typedef enum {
 	FP_VIEW_FRAME, /* just a frame */
 	FP_VIEW_SCREEN, /* represents the physical LED screen. rendering will render to the LEDs  */
 	FP_VIEW_ANIM,
-	FP_VIEW_LAYER
+	FP_VIEW_LAYER,
+	FP_VIEW_TRANSITION
 } fp_view_type;
 
 typedef struct {
@@ -150,6 +151,8 @@ typedef struct {
 	fp_viewid* frames;
 	unsigned int frameIndex;
 	unsigned int frameratePeriodMs;
+	bool isPlaying;
+	bool loop;
 } fp_view_anim_data;
 
 typedef enum {
@@ -177,12 +180,22 @@ typedef struct {
 
 } fp_view_layer_data;
 
-typedef struct {
-	/* mapViews are anim_views where each frame contains data (mapFields) about how one view is mapped onto the transition
+	/* contains two anim_views where each frame contains data (mapFields) about how one view is mapped onto the transition
 	 */
-	fp_viewid mapViewA;
-	fp_viewid mapViewB;
-	rgb_color (*blend_fn)(rgb_color a, uint16_t aWeight, rgb_color b, uint16_t bWeight);
+typedef struct {
+	fp_viewid viewA;
+	fp_viewid viewB;
+} fp_transition;
+
+typedef struct {
+	unsigned int pageCount;
+	fp_viewid* pages;
+	unsigned int pageIndex; /* marks page we are currently transitioned/transitioning to */
+	unsigned int previousPageIndex; /* marks page we are transitioning from */
+	fp_transition transition;
+	rgb_color (*blendFn)(rgb_color a, uint8_t aWeight, rgb_color b, uint8_t bWeight);
+	unsigned int transitionPeriodMs;
+	int loop; /* 1 = loop, 0 = stop, -1 = loop reverse */
 	/** stores the result of render */
 	fp_frameid frame;
 
@@ -207,12 +220,29 @@ fp_viewid fp_create_view(fp_view_type type, fp_viewid parent, fp_view_data data)
 
 fp_viewid fp_create_frame_view(unsigned int width, unsigned int height, rgb_color color);
 fp_viewid fp_create_screen_view(unsigned int width, unsigned int height);
+
 fp_viewid fp_create_anim_view(fp_viewid* views, unsigned int frameCount, unsigned int frameratePeriodMs, unsigned int width, unsigned int height);
+/** plays the animation through once from the beginning, then stops */
+bool fp_play_once_anim(fp_viewid animView);
+/** resumes the animation at current frame and look continuously */
+bool fp_play_anim(fp_viewid animView);
+bool fp_pause_anim(fp_viewid animView);
+
 fp_viewid fp_create_layer_view(fp_viewid* views, unsigned int layerCount, unsigned int width, unsigned int height, unsigned int layerWidth, unsigned int layerHeight);
+
+fp_viewid fp_create_transition_view(fp_viewid* pageIds, unsigned int pageCount, fp_transition transition, unsigned int transitionPeriodMs, unsigned int width, unsigned int height);
+
+bool fp_transition_loop(fp_viewid transitionView, bool reverse);
+bool fp_transition_set(fp_viewid transitionView, unsigned int pageIndex);
+bool fp_transition_next(fp_viewid transitionView);
+bool fp_transition_prev(fp_viewid transitionView);
 
 fp_view* fp_get_view(fp_viewid id);
 bool fp_render_view(fp_viewid id);
 void fp_mark_view_dirty(fp_viewid id);
+
+/* simple sliding transition. starts on viewA and slides left one pixel each frame to viewB */
+fp_transition fp_create_sliding_transition(unsigned int width, unsigned int height, unsigned int frameratePeriodMs);
 
 // returns a frame containing the contents of that view. compositing views (e.g. layer_view) may 
 fp_frameid fp_get_view_frame(fp_viewid id);
@@ -228,5 +258,6 @@ typedef struct {
 
 void fp_task_render(void *pvParameters);
 
+unsigned int fp_frame_height(fp_frame* frame);
 
 #endif /* PIXEL_H */
