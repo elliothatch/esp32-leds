@@ -725,23 +725,32 @@ fp_transition fp_create_sliding_transition(unsigned int width, unsigned int heig
 			for(int col = 0; col < width; col++) {
 				// TODO: calculate indexes for the transitions
 				// it might be useful to write a helper function that generates these?
-				unsigned int aIndex = calc_index(col, row, width);
+
+				unsigned int aIndex = calc_index(col + i, row, width);
 				unsigned int aAlpha = 0;
-				if(col >= i) {
+				if(col+i < width) {
 					aAlpha = 255;
 				}
+				/*
+				if(col >= i) {
+					aAlpha = 255;
+				}*/
 
-				unsigned int bIndex = 0;
+				unsigned int bIndex = calc_index(col + i - width, row, width);
 				unsigned int bAlpha = 0;
-				if(col >= (width - i)) {
+				if(col+i >= width) {
 					bAlpha = 255;
 				}
+				/*
+				if(col >= (width - i)) {
+					bAlpha = 255;
+				}*/
 
 				frameA->pixels[calc_index(col, row, width)].mapFields.index = aIndex;
-				frameA->pixels[calc_index(col, row, width)].mapFields.index = aAlpha;
+				frameA->pixels[calc_index(col, row, width)].mapFields.alpha = aAlpha;
 
 				frameB->pixels[calc_index(col, row, width)].mapFields.index = bIndex;
-				frameB->pixels[calc_index(col, row, width)].mapFields.index = bAlpha;
+				frameB->pixels[calc_index(col, row, width)].mapFields.alpha = bAlpha;
 			}
 		}
 	}
