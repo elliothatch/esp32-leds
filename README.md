@@ -7,7 +7,15 @@ Enable IDF environment:
 . $IDF_PATH/export.sh
 ```
 
-# build 
+# build
+If you modified the non-volatile storage files, you must update the partition.
+
+```bash
+python nvs_partition_gen.py generate nvs.csv nvs.bin 0x9000
+esptool.py write_flash 0x110000 nvs.bin
+```
+
+
 ```bash
 idf.py build
 ```

@@ -2,6 +2,7 @@
 */
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -9,10 +10,18 @@
 #include "esp_system.h"
 #include "esp_spi_flash.h"
 
+#include "nvs_flash.h"
+#include "nvs.h"
+
+#include "esp_err.h"
+
+#define IMAGE_NAMESPACE "image"
+
 #define NUM_LEDS 64
 #include "ws2812_control.h"
 #include "color.h"
 #include "pixel.h"
+#include "ppm.h"
 
 #define LED_QUEUE_LENGTH 16 
 
@@ -21,6 +30,7 @@ fp_viewid create_animated_layer_test();
 fp_viewid create_layer_alpha_test();
 fp_viewid create_transition_test();
 fp_viewid create_animated_transition_test();
+fp_viewid create_nvs_image_test();
 
 void app_main()
 {
@@ -80,7 +90,8 @@ void app_main()
 	/* fp_viewid mainViewId = create_animated_layer_test(); */
 	/* fp_viewid mainViewId = create_layer_alpha_test(); */
 	/* fp_viewid mainViewId = create_transition_test(); */
-	fp_viewid mainViewId = create_animated_transition_test();
+	/* fp_viewid mainViewId = create_animated_transition_test(); */
+	fp_viewid mainViewId = create_nvs_image_test();
 
 
 	fp_view* screenView = fp_get_view(screenViewId);
@@ -449,4 +460,44 @@ fp_viewid create_animated_transition_test() {
 	fp_transition_loop(transitionViewId, false);
 
 	return transitionViewId;
+}
+
+fp_viewid create_nvs_image_test() {
+	esp_err_t err = nvs_flash_init_partition("storage");
+	ESP_ERROR_CHECK(err);
+
+	nvs_handle_t rainImageHandle;
+
+	err = nvs_open(IMAGE_NAMESPACE, NVS_READONLY, &rainImageHandle);
+	if(err != ESP_OK) {
+		printf("Error (%s) opening NVS namespace!\n", esp_err_to_name(err));
+		ESP_ERROR_CHECK(err);
+	}
+
+	size_t imageSize = 0;
+	err = nvs_get_blob(rainImageHandle, "rain", NULL, &imageSize);
+	if(err != ESP_OK) {
+		printf("Error (%s) getting blob size!\n", esp_err_to_name(err));
+		ESP_ERROR_CHECK(err);
+	}
+
+	char* imageBuffer = malloc(imageSize);
+	err = nvs_get_blob(rainImageHandle, "rain", imageBuffer, &imageSize);
+	if(err != ESP_OK) {
+		printf("Error (%s) getting blob data!\n", esp_err_to_name(err));
+		free(imageBuffer);
+		ESP_ERROR_CHECK(err);
+	}
+
+
+	fp_ppm_image ppmImage = fp_parse_ppm(imageBuffer, imageSize);
+
+	fp_viewid rainFrameViewId = fp_create_frame_view(ppmImage.width, ppmImage.height, rgb(0,0,0));
+	fp_frame* rainFrame = fp_get_frame(fp_get_view_frame(rainFrameViewId));
+
+	memcpy(rainFrame->pixels, ppmImage.pixels, rainFrame->length);
+
+	free(imageBuffer);
+
+	return rainFrameViewId;
 }
