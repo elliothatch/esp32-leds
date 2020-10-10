@@ -2,7 +2,7 @@
 #define COLOR_H
 #include <stdint.h>
 
-/** neopixels use BRG order */
+/** WS2812 use BRG order */
 typedef union {
 	struct {
 		uint8_t b;

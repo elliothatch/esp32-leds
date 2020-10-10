@@ -219,6 +219,8 @@ typedef struct {
 fp_viewid fp_create_view(fp_view_type type, fp_viewid parent, fp_view_data data); /* used internally */
 
 fp_viewid fp_create_frame_view(unsigned int width, unsigned int height, rgb_color color);
+/** TODO: come up with a better naming scheme */
+fp_viewid fp_create_frame_view_composite(fp_frameid frameid);
 fp_viewid fp_create_screen_view(unsigned int width, unsigned int height);
 
 fp_viewid fp_create_anim_view(fp_viewid* views, unsigned int frameCount, unsigned int frameratePeriodMs, unsigned int width, unsigned int height);

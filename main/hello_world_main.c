@@ -10,8 +10,9 @@
 #include "esp_system.h"
 #include "esp_spi_flash.h"
 
-#include "nvs_flash.h"
-#include "nvs.h"
+/* #include "nvs_flash.h" */
+/* #include "nvs.h" */
+#include "esp_spiffs.h"
 
 #include "esp_err.h"
 
@@ -463,6 +464,7 @@ fp_viewid create_animated_transition_test() {
 }
 
 fp_viewid create_nvs_image_test() {
+	/*
 	esp_err_t err = nvs_flash_init_partition("storage");
 	ESP_ERROR_CHECK(err);
 
@@ -489,15 +491,41 @@ fp_viewid create_nvs_image_test() {
 		ESP_ERROR_CHECK(err);
 	}
 
+	*/
 
-	fp_ppm_image ppmImage = fp_parse_ppm(imageBuffer, imageSize);
+	esp_vfs_spiffs_conf_t conf = {
+		.base_path = "/spiffs",
+		.partition_label = NULL,
+		.max_files = 5,
+		.format_if_mount_failed = false
+	};
 
-	fp_viewid rainFrameViewId = fp_create_frame_view(ppmImage.width, ppmImage.height, rgb(0,0,0));
-	fp_frame* rainFrame = fp_get_frame(fp_get_view_frame(rainFrameViewId));
+	esp_err_t err = esp_vfs_spiffs_register(&conf);
 
-	memcpy(rainFrame->pixels, ppmImage.pixels, rainFrame->length);
+	if(err != ESP_OK) {
+		printf("Error (%s) initializing spiffs\n", esp_err_to_name(err));
+		ESP_ERROR_CHECK(err);
+	}
 
-	free(imageBuffer);
+	FILE* file = fopen("/spiffs/test-pat.ppm", "rb");
+	if(!file) {
+		printf("Error (%s) opening file\n", esp_err_to_name(err));
+		abort();
+	}
 
-	return rainFrameViewId;
+	fseek(file, 0, SEEK_END);
+	size_t fileSize = ftell(file);
+	fseek(file, 0, SEEK_SET);
+
+	printf("file is %d bytes\n", fileSize);
+	char* fileBuffer = malloc(fileSize + 1);
+	fread(fileBuffer, 1, fileSize, file);
+	fclose(file);
+
+	fp_frameid frameid = fp_ppm_create_frame(fileBuffer, fileSize);
+	fp_viewid viewid = fp_create_frame_view_composite(frameid);
+
+	free(fileBuffer);
+
+	return viewid;
 }

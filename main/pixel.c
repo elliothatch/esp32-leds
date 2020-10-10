@@ -460,6 +460,19 @@ fp_viewid fp_create_frame_view(unsigned int width, unsigned int height, rgb_colo
 	return fp_create_view(FP_VIEW_FRAME, 0, data);
 }
 
+fp_viewid fp_create_frame_view_composite(fp_frameid frameid) {
+	fp_view_frame_data* frameData = malloc(sizeof(fp_view_frame_data));
+	if(!frameData) {
+		printf("error: fp_create_frame_view_composite: failed to allocate memory for frameData\n");
+		return 0;
+	}
+
+	frameData->frame = frameid;
+	fp_view_data data = { .FRAME = frameData };
+
+	return fp_create_view(FP_VIEW_FRAME, 0, data);
+}
+
 fp_viewid fp_create_screen_view(unsigned int width, unsigned int height) {
 	fp_view_screen_data * screenData = malloc(sizeof(fp_view_screen_data));
 	if(!screenData) {
