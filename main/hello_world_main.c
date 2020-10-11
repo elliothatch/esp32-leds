@@ -16,6 +16,8 @@
 
 #include "esp_err.h"
 
+#include "driver/gpio.h"
+
 #define IMAGE_NAMESPACE "image"
 
 #define NUM_LEDS 64
@@ -26,12 +28,22 @@
 
 #define LED_QUEUE_LENGTH 16 
 
+#define GPIO_INPUT_PIN_0 19
+#define GPIO_INPUT_PIN_1 21
+#define GPIO_INPUT_PIN_2 3
+
+#define GPIO_INPUT_PIN_MASK ((1ULL<<GPIO_INPUT_PIN_0) | (1ULL<<GPIO_INPUT_PIN_1) | (1ULL<<GPIO_INPUT_PIN_2))
+#define ESP_INTR_FLAG_DEFAULT 0
+
+
 fp_viewid create_animation_test();
 fp_viewid create_animated_layer_test();
 fp_viewid create_layer_alpha_test();
 fp_viewid create_transition_test();
 fp_viewid create_animated_transition_test();
 fp_viewid create_nvs_image_test();
+
+void init_gpio_test();
 
 void app_main()
 {
@@ -104,6 +116,9 @@ void app_main()
 	fp_task_render_params renderParams = { 1000/60, screenViewId, ledQueue, ledShutdownLock };
 
 	xTaskCreate(fp_task_render, "Render LED Task", 2048*4, &renderParams, 1, NULL);
+
+
+	init_gpio_test();
 
 	/* xQueueSend( */
 
@@ -528,4 +543,195 @@ fp_viewid create_nvs_image_test() {
 	free(fileBuffer);
 
 	return viewid;
+}
+
+/** detect a full step when the encoder has passed through all 4 states
+ * and returned to the OFF state, completing a cycle.
+ * negative values represent negative rotation */
+#define RE_STATE_OFF 0
+#define RE_STATE_CW_START 1
+#define RE_STATE_ON 2
+#define RE_STATE_CW_END 3
+
+/* number of ticks forward/backward from starting position */
+static int re_position = 0;
+/* sub-position of rotary encoder; used to detect a position change */
+static int re_state = RE_STATE_OFF;
+
+static bool rotary_encoder_update_state(int a, int b, int aPrev, int bPrev) {
+	/* state truth table
+	 * a b o
+	 * 0 0 0
+	 * 0 1 1
+	 * 1 0 3
+	 * 1 1 2
+	 */
+	int state = 2*a + b - a*b + a*!b;
+	int statePrev = 2*aPrev + bPrev - aPrev*bPrev + aPrev*!bPrev;
+
+	int stateDiff = state - statePrev;
+
+	if(stateDiff == -3) {
+		stateDiff = 1;
+	}
+	else if(stateDiff == 3) {
+		stateDiff = -1;
+	}
+
+	if(stateDiff == 0) {
+		return false;
+	}
+
+	/* if 2, continue in same direction as before, or default CW */
+	if(stateDiff == 2 || stateDiff == -2) {
+		stateDiff = 2*(re_state >= 0? 1: -1);
+	}
+
+	re_state += stateDiff;
+
+	/* printf("%d %d [%d %d] (%d %d) (%d %d)\n", re_state, stateDiff, statePrev, state, aPrev, bPrev, a, b); */
+
+	if(re_state > 3) {
+		re_state -= 4;
+		re_position++;
+		return true;
+	}
+	else if(re_state < -3) {
+		re_state += 4;
+		re_position--;
+		return true;
+	}
+	
+	return false;
+}
+
+static int input0_prev = 0;
+static int input1_prev = 0;
+static int input0 = 0;
+static int input1 = 0;
+
+/* static int input2 = 0; */
+
+static xQueueHandle gpio_evt_queue = NULL;
+static void gpio_handle_input_task(void* arg) {
+	uint32_t io_num;
+	for(;;) {
+		if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
+			/* printf("GPIO[%d] intr, val: %d\n", io_num, gpio_get_level(io_num)); */
+			/*
+			switch(io_num) {
+				case GPIO_INPUT_PIN_0:
+					input0 = gpio_get_level(io_num);
+					break;
+				case GPIO_INPUT_PIN_1:
+					input1 = gpio_get_level(io_num);
+					break;
+				case GPIO_INPUT_PIN_2:
+					input2 = gpio_get_level(io_num);
+					break;
+			}
+
+			if(io_num == GPIO_INPUT_PIN_0 && input0 == 1) {
+				if(input1 == 0) {
+					// clockwise
+					counter++;
+
+				}
+				else {
+					// counter-clockwise
+					counter--;
+				}
+				if(counter >= 0) {
+					for(int i = 0; i < counter; i++) {
+						printf("+");
+					}
+				}
+				else {
+					for(int i = 0; i > counter; i--) {
+						printf("-");
+					}
+				}
+				printf("\n");
+			}
+			*/
+
+			if(io_num == GPIO_INPUT_PIN_0 || io_num == GPIO_INPUT_PIN_1) {
+				// update rotary encoder
+				input0_prev = input0;
+				input1_prev = input1;
+
+				input0 = !gpio_get_level(GPIO_INPUT_PIN_0);
+				input1 = !gpio_get_level(GPIO_INPUT_PIN_1);
+				if(rotary_encoder_update_state(input0, input1, input0_prev, input1_prev)) {
+					printf("RE %4d: ", re_position);
+					if(re_position >= 0) {
+						for(int i = 0; i < re_position; i++) {
+							printf("+");
+						}
+					}
+					else {
+						for(int i = 0; i > re_position; i--) {
+							printf("-");
+						}
+					}
+					printf("\n");
+				}
+			}
+			else {
+				printf("GPIO[%d] intr, val: %d\n", io_num, gpio_get_level(io_num));
+			}
+		}
+	}
+}
+
+static void IRAM_ATTR gpio_isr_handler(void* arg) {
+	uint32_t gpio_num = (uint32_t)arg;
+	xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
+}
+
+void re_poll_test() {
+	for(;;) {
+		// update rotary encoder
+		input0_prev = input0;
+		input1_prev = input1;
+
+		input0 = !gpio_get_level(GPIO_INPUT_PIN_0);
+		input1 = !gpio_get_level(GPIO_INPUT_PIN_1);
+		if(rotary_encoder_update_state(input0, input1, input0_prev, input1_prev)) {
+			if(re_position >= 0) {
+				for(int i = 0; i < re_position; i++) {
+					printf("+");
+				}
+			}
+			else {
+				for(int i = 0; i > re_position; i--) {
+					printf("-");
+				}
+			}
+			printf("\n");
+		}
+		vTaskDelay(1);
+	}
+}
+
+
+void init_gpio_test() {
+	gpio_config_t io_conf;
+	io_conf.intr_type = GPIO_INTR_ANYEDGE;
+	io_conf.pin_bit_mask = GPIO_INPUT_PIN_MASK;
+	io_conf.mode = GPIO_MODE_INPUT;
+	io_conf.pull_up_en = 1;
+	io_conf.pull_down_en = 0;
+
+	gpio_config(&io_conf);
+
+	/* xTaskCreate(re_poll_test, "re_poll_test", 2048, NULL, 10, NULL); */
+	
+	gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
+	xTaskCreate(gpio_handle_input_task, "gpio_handle_input_task", 2048, NULL, 10, NULL);
+
+	gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
+	gpio_isr_handler_add(GPIO_INPUT_PIN_0, gpio_isr_handler, (void*) GPIO_INPUT_PIN_0);
+	gpio_isr_handler_add(GPIO_INPUT_PIN_1, gpio_isr_handler, (void*) GPIO_INPUT_PIN_1);
+	gpio_isr_handler_add(GPIO_INPUT_PIN_2, gpio_isr_handler, (void*) GPIO_INPUT_PIN_2);
 }
