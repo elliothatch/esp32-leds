@@ -53,7 +53,7 @@
 #include "ws2812_control.h"
 
 #define FP_FRAME_COUNT 512
-#define FP_VIEW_COUNT 256
+#define FP_VIEW_COUNT 512
 #define FP_PENDING_VIEW_RENDER_COUNT 64
 
 #define DEBUG true

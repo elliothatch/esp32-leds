@@ -100,11 +100,11 @@ void app_main()
 	fp_viewid screenViewId = fp_create_screen_view(8, 8);
 
 	/* fp_viewid mainViewId = create_animation_test(); */
-	/* fp_viewid mainViewId = create_animated_layer_test(); */
+	fp_viewid mainViewId = create_animated_layer_test();
 	/* fp_viewid mainViewId = create_layer_alpha_test(); */
 	/* fp_viewid mainViewId = create_transition_test(); */
 	/* fp_viewid mainViewId = create_animated_transition_test(); */
-	fp_viewid mainViewId = create_nvs_image_test();
+	/* fp_viewid mainViewId = create_nvs_image_test(); */
 
 
 	fp_view* screenView = fp_get_view(screenViewId);
@@ -258,6 +258,12 @@ fp_viewid create_animated_layer_test(fp_viewid screenView) {
 		animViewIds[3],
 		animViewIds[4],
 	};
+
+	fp_play_anim(animViewIds[0]);
+	fp_play_anim(animViewIds[1]);
+	fp_play_anim(animViewIds[2]);
+	fp_play_anim(animViewIds[3]);
+	fp_play_anim(animViewIds[4]);
 
 
 	fp_viewid layerViewId = fp_create_layer_view(layerViews, layerCount, 8, 8, 4, 4);
