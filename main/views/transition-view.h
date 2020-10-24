@@ -2,7 +2,6 @@
 #define TRANSITION_VIEW_H
 
 #include "../view.h"
-#include "anim-view.h"
 
 /* fp: fresh pixel */
 
@@ -29,6 +28,10 @@ typedef struct {
 
 fp_viewid fp_create_transition_view(fp_viewid* pageIds, unsigned int pageCount, fp_transition transition, unsigned int transitionPeriodMs, unsigned int width, unsigned int height);
 
+fp_frameid fp_transition_view_get_frame(fp_view* view);
+bool fp_transition_view_render(fp_view* view);
+bool fp_transition_view_onnext_render(fp_view* view);
+
 bool fp_transition_loop(fp_viewid transitionView, bool reverse);
 bool fp_transition_set(fp_viewid transitionView, unsigned int pageIndex);
 bool fp_transition_next(fp_viewid transitionView);
@@ -36,5 +39,11 @@ bool fp_transition_prev(fp_viewid transitionView);
 
 /* simple sliding transition. starts on viewA and slides left one pixel each frame to viewB */
 fp_transition fp_create_sliding_transition(unsigned int width, unsigned int height, unsigned int frameratePeriodMs);
+
+static const fp_view_register_data fp_transition_view_register_data = {
+	&fp_transition_view_get_frame,
+	&fp_transition_view_render,
+	&fp_transition_view_onnext_render
+};
 
 #endif /* TRANSITION_VIEW_H */

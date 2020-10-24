@@ -3,6 +3,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "frame-view.h"
+#include "../render.h"
+
 fp_viewid fp_create_anim_view(fp_viewid* views, unsigned int frameCount, unsigned int frameratePeriodMs, unsigned int width, unsigned int height) {
 	fp_viewid* frames = malloc(frameCount * sizeof(fp_viewid));
 	if(!frames) {
@@ -40,30 +43,59 @@ fp_viewid fp_create_anim_view(fp_viewid* views, unsigned int frameCount, unsigne
 	return id;
 }
 
+fp_frameid fp_anim_view_get_frame(fp_view* view) {
+	fp_view_anim_data* animData = view->data;
+	return fp_get_view_frame(animData->frames[animData->frameIndex]);
+}
+
+bool fp_anim_view_render(fp_view* view) {
+	return true;
+}
+
+bool fp_anim_view_onnext_render(fp_view* view) {
+	TickType_t currentTick = xTaskGetTickCount();
+	fp_view_anim_data* animData = view->data;
+	if(animData->isPlaying) {
+		animData->frameIndex = (animData->frameIndex + 1) % animData->frameCount;
+
+		if(animData->frameIndex < animData->frameCount - 1 || animData->loop) {
+			fp_queue_render(view->id, currentTick + pdMS_TO_TICKS(animData->frameratePeriodMs)); 
+		}
+		else {
+			animData->isPlaying = false;
+		}
+	}
+
+	return true;
+}
+
+
 bool fp_play_once_anim(fp_viewid animView) {
 	TickType_t currentTick = xTaskGetTickCount();
 	fp_view* view = fp_get_view(animView);
+	fp_view_anim_data* animData = view->data;
 
-	view->data.ANIM->isPlaying = true;
-	view->data.ANIM->loop = false;
-	view->data.ANIM->frameIndex = 0;
+	animData->isPlaying = true;
+	animData->loop = false;
+	animData->frameIndex = 0;
 	fp_mark_view_dirty(animView);
-	return fp_queue_render(animView, currentTick + pdMS_TO_TICKS(view->data.ANIM->frameratePeriodMs)); 
+	return fp_queue_render(animView, currentTick + pdMS_TO_TICKS(animData->frameratePeriodMs)); 
 }
 
 /** queues up next frame of animation */
 bool fp_play_anim(fp_viewid animView) {
 	TickType_t currentTick = xTaskGetTickCount();
 	fp_view* view = fp_get_view(animView);
+	fp_view_anim_data* animData = view->data;
 
-	view->data.ANIM->isPlaying = true;
-	view->data.ANIM->loop = true;
-	return fp_queue_render(animView, currentTick + pdMS_TO_TICKS(view->data.ANIM->frameratePeriodMs)); 
+	animData->isPlaying = true;
+	animData->loop = true;
+	return fp_queue_render(animView, currentTick + pdMS_TO_TICKS(animData->frameratePeriodMs)); 
 }
 
 bool fp_pause_anim(fp_viewid animView) {
 	fp_view* view = fp_get_view(animView);
-	view->data.ANIM->isPlaying = false;
+	((fp_view_anim_data*)view->data)->isPlaying = false;
 
 	return true;
 }

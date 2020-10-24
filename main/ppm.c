@@ -1,7 +1,7 @@
 #include "ppm.h"
-#include "pixel.h"
 #include "color.h"
 
+#include "freertos/FreeRTOS.h"
 #include <string.h>
 
 /** returns pointer to the next non-comment char.

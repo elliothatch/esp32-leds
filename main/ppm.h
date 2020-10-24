@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "color.h"
-#include "pixel.h"
+#include "frame.h"
 
 #define PPM_MAGIC_NUMBER_1 'p'
 #define PPM_MAGIC_NUMBER_2 '6'

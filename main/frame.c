@@ -7,7 +7,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
-unsigned int calc_index(unsigned int x, unsigned int y, unsigned int width) {
+unsigned int fp_calc_index(unsigned int x, unsigned int y, unsigned int width) {
 	return y * width + x % width;
 }
 
@@ -92,8 +92,8 @@ bool fp_fset_rect(
 
 	for(int row = 0; row < fmin(frame->length / frame->width, fmax(0, targetFrame->length / targetFrame->width - y)); row++) {
 		memcpy(
-			&targetFrame->pixels[calc_index(x, y + row, targetFrame->width)],
-			&frame->pixels[calc_index(0, row, frame->width)],
+			&targetFrame->pixels[fp_calc_index(x, y + row, targetFrame->width)],
+			&frame->pixels[fp_calc_index(0, row, frame->width)],
 			fmin(frame->width, fmax(0, targetFrame->width - x)) * sizeof(((fp_frame*)0)->pixels)
 		);
 	}
@@ -116,7 +116,7 @@ bool fp_ffill_rect(
 	fp_frame* frame = &framePool[id];
 	for(int row = 0; row < fmin(height, fmax(0,frame->length / frame->width - y)); row++) {
 		for(int col = 0; col < fmin(width, fmax(0, frame->width - x)); col++) {
-			frame->pixels[calc_index(x + col, y + row, frame->width)] = color;
+			frame->pixels[fp_calc_index(x + col, y + row, frame->width)] = color;
 		}
 	}
 
@@ -138,13 +138,13 @@ bool fp_fset_rect_transparent(
 
 	for(int row = 0; row < fmin(frame->length / frame->width, fmax(0, targetFrame->length / targetFrame->width - y)); row++) {
 		for(int col = 0; col < fmin(frame->width, fmax(0, targetFrame->width - x)); col++) {
-			rgb_color pixel = frame->pixels[calc_index(col, row, frame->width)];
+			rgb_color pixel = frame->pixels[fp_calc_index(col, row, frame->width)];
 			if(pixel.fields.b == 0
 				&& pixel.fields.r == 0
 				&& pixel.fields.g == 0) {
 				continue;
 			}
-			targetFrame->pixels[calc_index(x + col, y + row, targetFrame->width)] = pixel;
+			targetFrame->pixels[fp_calc_index(x + col, y + row, targetFrame->width)] = pixel;
 		}
 	}
 
@@ -189,12 +189,12 @@ bool fp_fblend_rect(
 	for(int row = 0; row < fmin(frame->length / frame->width, (targetFrame->length / targetFrame->width) - y); row++) {
 		for(int col = 0; col < fmin(frame->width, targetFrame->width - x); col++) {
 			rgb_color colorResult = (*blendFn)(
-					frame->pixels[calc_index(col, row, frame->width)],
+					frame->pixels[fp_calc_index(col, row, frame->width)],
 					alphaSrc,
-					targetFrame->pixels[calc_index(x + col, y + row, targetFrame->width)],
+					targetFrame->pixels[fp_calc_index(x + col, y + row, targetFrame->width)],
 					alphaTarget
 			);
-			targetFrame->pixels[calc_index(x + col, y + row, targetFrame->width)] = colorResult;
+			targetFrame->pixels[fp_calc_index(x + col, y + row, targetFrame->width)] = colorResult;
 		}
 	}
 

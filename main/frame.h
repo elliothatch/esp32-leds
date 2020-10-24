@@ -21,6 +21,8 @@ typedef struct {
 
 typedef unsigned int fp_frameid;
 
+unsigned int fp_calc_index(unsigned int x, unsigned int y, unsigned int width);
+
 /* creates a frame with given width and height, and returns its id
  * if the frame could not be created, returns id 0, which points to the NULL frame (all fields 0) */
 fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color color);

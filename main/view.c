@@ -2,9 +2,25 @@
 
 #include "freertos/FreeRTOS.h"
 
+fp_view_register_data registered_views[FP_VIEW_TYPE_COUNT];
+
+bool fp_register_view_type(fp_view_type viewType, fp_view_register_data registerData) {
+	// TODO: disallow overwriting data
+	if(viewType >= FP_VIEW_COUNT) {
+		return false;
+	}
+
+	registered_views[viewType] = registerData;
+	return true;
+}
+
+/* register views.
+ * TODO: allow more control over initialization?
+ */
+
 /* fp_view viewPool[FP_VIEW_COUNT] = {{ FP_VIEW_FRAME, 0, false, {.FRAME = 0}}}; */
 unsigned int viewCount = 1;
-fp_view viewPool[FP_VIEW_COUNT] = {{ FP_VIEW_FRAME, 0, false, NULL}};
+fp_view viewPool[FP_VIEW_COUNT] = {{ FP_VIEW_FRAME, 0, 0, false, NULL}};
 
 fp_view* fp_get_view(fp_viewid id) {
 	if(id >= viewCount) {
@@ -15,7 +31,7 @@ fp_view* fp_get_view(fp_viewid id) {
 	return &viewPool[id];
 }
 
-fp_viewid fp_create_view(fp_view_type type, fp_viewid parent, fp_view_data data) {
+fp_viewid fp_create_view(fp_view_type type, fp_viewid parent, fp_view_data* data) {
 	if(viewCount >= FP_VIEW_COUNT) {
 		printf("error: fp_create_view: view pool full. limit: %d\n", FP_VIEW_COUNT);
 		return 0;
@@ -24,6 +40,7 @@ fp_viewid fp_create_view(fp_view_type type, fp_viewid parent, fp_view_data data)
 	fp_viewid id = viewCount++;
 
 	viewPool[id].type = type;
+	viewPool[id].id = id;
 	viewPool[id].parent = parent;
 	viewPool[id].dirty = true;
 	viewPool[id].data = data;
@@ -35,6 +52,21 @@ fp_viewid fp_create_view(fp_view_type type, fp_viewid parent, fp_view_data data)
 	return id;
 }
 
+/* can trigger re-render on dirty views */
+fp_frameid fp_get_view_frame(fp_viewid id) {
+	fp_view* view = fp_get_view(id);
+	// TODO: handle invalid view id
+	if(view->dirty) {
+		fp_render_view(id);
+	}
+
+	if(view->type >= FP_VIEW_TYPE_COUNT) {
+		return 0;
+	}
+
+	return registered_views[view->type].get_view_frame(view);
+}
+
 void fp_mark_view_dirty(fp_viewid id) {
 	fp_view* view = fp_get_view(id);
 	view->dirty = true;
@@ -43,37 +75,35 @@ void fp_mark_view_dirty(fp_viewid id) {
 	}
 }
 
-fp_viewid fp_create_frame_view(unsigned int width, unsigned int height, rgb_color color) {
-	fp_view_frame_data* frameData = malloc(sizeof(fp_view_frame_data));
-	if(!frameData) {
-		printf("error: fp_create_frame_view: failed to allocate memory for frameData\n");
-		return 0;
+bool fp_render_view(fp_viewid id) {
+	if(id >= viewCount) {
+		return false;
 	}
 
-	frameData->frame = fp_create_frame(width, height, color);
-	return fp_create_view(FP_VIEW_FRAME, 0, frameData);
+	fp_view* view = &viewPool[id];
+
+	if(view->type >= FP_VIEW_TYPE_COUNT) {
+		return false;
+	}
+
+	return registered_views[view->type].render_view(view);
+
+	view->dirty = false;
+
+	return true;
 }
 
-fp_viewid fp_create_frame_view_composite(fp_frameid frameid) {
-	fp_view_frame_data* frameData = malloc(sizeof(fp_view_frame_data));
-	if(!frameData) {
-		printf("error: fp_create_frame_view_composite: failed to allocate memory for frameData\n");
-		return 0;
+bool fp_onnext_render(fp_viewid id) {
+	if(id >= viewCount) {
+		return false;
 	}
 
-	frameData->frame = frameid;
-	return fp_create_view(FP_VIEW_FRAME, 0, frameData);
-}
+	fp_view* view = &viewPool[id];
 
-fp_viewid fp_create_screen_view(unsigned int width, unsigned int height) {
-	fp_view_screen_data * screenData = malloc(sizeof(fp_view_screen_data));
-	if(!screenData) {
-		printf("error: fp_create_screen_view: failed to allocate memory for screenData\n");
-		return 0;
+	if(view->type >= FP_VIEW_TYPE_COUNT) {
+		return false;
 	}
 
-	screenData->frame = fp_create_frame(width, height, rgb(0,0,0));
-	screenData->childView = 0;
+	return registered_views[view->type].onnext_render(view);
 
-	return fp_create_view(FP_VIEW_SCREEN, 0, screenData);
 }

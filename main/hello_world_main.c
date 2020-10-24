@@ -23,8 +23,15 @@
 #define NUM_LEDS 64
 #include "ws2812_control.h"
 #include "color.h"
-#include "pixel.h"
+#include "frame.h"
+#include "render.h"
 #include "ppm.h"
+
+#include "views/frame-view.h"
+#include "views/ws2812-view.h"
+#include "views/anim-view.h"
+#include "views/layer-view.h"
+#include "views/transition-view.h"
 
 #define LED_QUEUE_LENGTH 16 
 
@@ -97,7 +104,7 @@ void app_main()
 	}
 	*/
 
-	fp_viewid screenViewId = fp_create_screen_view(8, 8);
+	fp_viewid screenViewId = fp_create_ws2812_view(8, 8);
 
 	/* fp_viewid mainViewId = create_animation_test(); */
 	fp_viewid mainViewId = create_animated_layer_test();
@@ -111,7 +118,15 @@ void app_main()
 	fp_view* mainView = fp_get_view(mainViewId);
 
 	mainView->parent = screenViewId;
-	screenView->data.SCREEN->childView = mainViewId;
+	((fp_view_ws2812_data*)screenView->data)->childView = mainViewId;
+
+	ws2812_control_init();
+
+	fp_register_view_type(FP_VIEW_FRAME, fp_frame_view_register_data);
+	fp_register_view_type(FP_VIEW_WS2812, fp_ws2812_view_register_data);
+	fp_register_view_type(FP_VIEW_ANIM, fp_anim_view_register_data);
+	fp_register_view_type(FP_VIEW_LAYER, fp_layer_view_register_data);
+	fp_register_view_type(FP_VIEW_TRANSITION, fp_transition_view_register_data);
 
 	fp_task_render_params renderParams = { 1000/60, screenViewId, ledQueue, ledShutdownLock };
 
@@ -158,11 +173,12 @@ fp_viewid create_animation_test(fp_viewid screenView) {
 
 	fp_viewid animViewId = fp_create_anim_view(NULL, frameCount, 3000/frameCount, 8, 8);
 	fp_view* animView = fp_get_view(animViewId);
+	fp_view_anim_data* animData = animView->data;
 
 	for(int i = 0; i < frameCount; i++) {
 		for(int j = 0; j < 8; j++) {
 			fp_ffill_rect(
-				fp_get_view(animView->data.ANIM->frames[i])->data.FRAME->frame,
+				((fp_view_frame_data*)fp_get_view(animData->frames[i])->data)->frame,
 				0, j,
 				8, 1,
 				hsv_to_rgb(hsv(((255*i/frameCount)+(255*j/8))%256, 255, 25))
@@ -184,6 +200,7 @@ fp_viewid create_animated_layer_test(fp_viewid screenView) {
 	for(int layerIndex = 0; layerIndex < layerCount - 1; layerIndex++) {
 		animViewIds[layerIndex] = fp_create_anim_view(NULL, frameCount, 2000/frameCount, 4, 4);
 		fp_view* animView = fp_get_view(animViewIds[layerIndex]);
+		fp_view_anim_data* animData = animView->data;
 
 		for(int i = 0; i < frameCount; i++) {
 			for(int j = 0; j < 4; j++) {
@@ -199,7 +216,7 @@ fp_viewid create_animated_layer_test(fp_viewid screenView) {
 				}
 				if(layerIndex == 0 || layerIndex == 3) {
 					fp_ffill_rect(
-						fp_get_view_frame(animView->data.ANIM->frames[((layerIndex+1) % 2)*(frameCount - 1 - 2*i) + i]),
+						fp_get_view_frame(animData->frames[((layerIndex+1) % 2)*(frameCount - 1 - 2*i) + i]),
 						0, j,
 						4, 1,
 						hsv_to_rgb(hsv(
@@ -216,7 +233,7 @@ fp_viewid create_animated_layer_test(fp_viewid screenView) {
 				}
 				else {
 					fp_ffill_rect(
-						fp_get_view_frame(animView->data.ANIM->frames[((layerIndex+1) % 2)*(frameCount - 1 - 2*i) + i]),
+						fp_get_view_frame(animData->frames[((layerIndex+1) % 2)*(frameCount - 1 - 2*i) + i]),
 						j, 0,
 						1, 4,
 						hsv_to_rgb(hsv(
@@ -239,10 +256,12 @@ fp_viewid create_animated_layer_test(fp_viewid screenView) {
 	const unsigned int maskFrameCount = 60;
 	animViewIds[4] = fp_create_anim_view(NULL, maskFrameCount, 4000/maskFrameCount, 4, 4);
 	fp_view* maskAnimView = fp_get_view(animViewIds[4]);
+	fp_view_anim_data* maskAnimData = maskAnimView->data;
+
 	for(int i = 0; i < maskFrameCount; i++) {
 		unsigned int brightness = 50*abs(i - (int)maskFrameCount/2)/(maskFrameCount/2);
 		fp_ffill_rect(
-			fp_get_view_frame(maskAnimView->data.ANIM->frames[i]),
+			fp_get_view_frame(maskAnimData->frames[i]),
 			0, 0,
 			4, 4,
 			rgb(brightness, brightness, brightness)
@@ -269,18 +288,19 @@ fp_viewid create_animated_layer_test(fp_viewid screenView) {
 	fp_viewid layerViewId = fp_create_layer_view(layerViews, layerCount, 8, 8, 4, 4);
 
 	fp_view* layerView = fp_get_view(layerViewId);
+	fp_view_layer_data* layerData = layerView->data;
 	/*
 	printf("%d %d %d %d %d\n",
-			layerView->data.LAYER->layers[0].view,
-			layerView->data.LAYER->layers[1].view,
-			layerView->data.LAYER->layers[2].view,
-			layerView->data.LAYER->layers[3].view,
-			layerView->data.LAYER->layers[4].view
+			layerData->layers[0].view,
+			layerData->layers[1].view,
+			layerData->layers[2].view,
+			layerData->layers[3].view,
+			layerData->layers[4].view
 	);
 	*/
 
 	for(int i = 0; i < layerCount; i++) {
-		fp_layer* layer = &layerView->data.LAYER->layers[i];
+		fp_layer* layer = &layerData->layers[i];
 		if(i != layerCount - 1) {
 			layer->offsetX = 4 * (i % 2);
 			layer->offsetY = 4 * (i / 2);
@@ -323,12 +343,13 @@ fp_viewid create_layer_alpha_test() {
 
 	fp_viewid layerViewId = fp_create_layer_view(NULL, layerCount, 8, 8, 5, 5);
 	fp_view* layerView = fp_get_view(layerViewId);
+	fp_view_layer_data* layerData = layerView->data;
 
 	fp_layer* layers[layerCount];
-	layers[0] = &layerView->data.LAYER->layers[0];
-	layers[1] = &layerView->data.LAYER->layers[1];
-	layers[2] = &layerView->data.LAYER->layers[2];
-	layers[3] = &layerView->data.LAYER->layers[3];
+	layers[0] = &layerData->layers[0];
+	layers[1] = &layerData->layers[1];
+	layers[2] = &layerData->layers[2];
+	layers[3] = &layerData->layers[3];
 
 	layers[0]->blendMode = FP_BLEND_ALPHA;
 	layers[0]->alpha = 255/4;
@@ -386,7 +407,7 @@ fp_viewid create_layer_alpha_test() {
 	for(int i = 0; i < layerCount; i++) {
 		unsigned int width = 5;
 		unsigned int height = 5;
-		fp_layer* layer = &layerView->data.LAYER->layers[i];
+		fp_layer* layer = &layerData->layers[i];
 		layer->offsetX = 2*i;
 		layer->offsetY = 2*i;
 
@@ -423,6 +444,7 @@ fp_viewid create_transition_test() {
 	fp_transition transition = fp_create_sliding_transition(8, 8, 1000/8);
 	fp_viewid transitionViewId = fp_create_transition_view(NULL, pageCount, transition, 2000, 8, 8);
 	fp_view* transitionView = fp_get_view(transitionViewId);
+	fp_view_transition_data* transitionData = transitionView->data;
 
 	rgb_color colors[] = {
 		rgb(100, 0, 0),
@@ -432,7 +454,7 @@ fp_viewid create_transition_test() {
 
 	for(int i = 0; i < pageCount; i++) {
 		fp_ffill_rect(
-			fp_get_view_frame(transitionView->data.TRANSITION->pages[i]),
+			fp_get_view_frame(transitionData->pages[i]),
 			0, 0,
 			8, 8,
 			colors[i]);
@@ -452,10 +474,11 @@ fp_viewid create_animated_transition_test() {
 	for(int pageIndex = 0; pageIndex < pageCount; pageIndex++) {
 		animViewIds[pageIndex] = fp_create_anim_view(NULL, frameCount, 1000/frameCount, 8, 8);
 		fp_view* animView = fp_get_view(animViewIds[pageIndex]);
+		fp_view_anim_data* animData = animView->data;
 
 		for(int i = 0; i < frameCount; i++) {
 			fp_ffill_rect(
-				fp_get_view_frame(animView->data.ANIM->frames[i]),
+				fp_get_view_frame(animData->frames[i]),
 				0, 0,
 				8, 8,
 				hsv_to_rgb(hsv(

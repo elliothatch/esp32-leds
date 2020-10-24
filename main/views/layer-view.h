@@ -32,4 +32,14 @@ typedef struct {
 
 fp_viewid fp_create_layer_view(fp_viewid* views, unsigned int layerCount, unsigned int width, unsigned int height, unsigned int layerWidth, unsigned int layerHeight);
 
+fp_frameid fp_layer_view_get_frame(fp_view* view);
+bool fp_layer_view_render(fp_view* view);
+bool fp_layer_view_onnext_render(fp_view* view);
+
+static const fp_view_register_data fp_layer_view_register_data = {
+	&fp_layer_view_get_frame,
+	&fp_layer_view_render,
+	&fp_layer_view_onnext_render
+};
+
 #endif /* LAYER_VIEW_H */
