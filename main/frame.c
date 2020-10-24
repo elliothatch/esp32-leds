@@ -65,6 +65,11 @@ fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color co
 	return id;
 }
 
+bool fp_free_frame(fp_frameid frame) {
+	// TODO: remove frame from pool
+	return true;
+}
+
 fp_frame* fp_get_frame(fp_frameid id) {
 	if(id >= framePoolCount) {
 		printf("error: fp_get_frame: id %d too large, max id: %d\n", id, framePoolCount-1);

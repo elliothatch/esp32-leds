@@ -12,13 +12,19 @@ typedef struct {
 	unsigned int frameratePeriodMs;
 	bool isPlaying;
 	bool loop;
-} fp_view_anim_data;
+} fp_anim_view_data;
 
-fp_viewid fp_create_anim_view(fp_viewid* views, unsigned int frameCount, unsigned int frameratePeriodMs, unsigned int width, unsigned int height);
-
-fp_frameid fp_anim_view_get_frame(fp_view* view);
-bool fp_anim_view_render(fp_view* view);
-bool fp_anim_view_onnext_render(fp_view* view);
+fp_viewid fp_create_anim_view(
+	unsigned int width,
+	unsigned int height,
+	unsigned int frameCount,
+	unsigned int frameratePeriodMs
+);
+fp_viewid fp_create_anim_view_composite(
+	fp_viewid* frames,
+	unsigned int frameCount,
+	unsigned int frameratePeriodMs
+);
 
 /** plays the animation through once from the beginning, then stops */
 bool fp_play_once_anim(fp_viewid animView);
@@ -26,10 +32,17 @@ bool fp_play_once_anim(fp_viewid animView);
 bool fp_play_anim(fp_viewid animView);
 bool fp_pause_anim(fp_viewid animView);
 
+
+fp_frameid fp_anim_view_get_frame(fp_view* view);
+bool fp_anim_view_render(fp_view* view);
+bool fp_anim_view_onnext_render(fp_view* view);
+bool fp_anim_view_free(fp_view* view);
+
 static const fp_view_register_data fp_anim_view_register_data = {
 	&fp_anim_view_get_frame,
 	&fp_anim_view_render,
-	&fp_anim_view_onnext_render
+	&fp_anim_view_onnext_render,
+	&fp_anim_view_free
 };
 
 #endif /* ANIM_VIEW_H */

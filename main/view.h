@@ -17,18 +17,9 @@ typedef enum {
 	FP_VIEW_ANIM,
 	FP_VIEW_LAYER,
 	FP_VIEW_TRANSITION,
+	FP_VIEW_DYNAMIC,
 	FP_VIEW_TYPE_COUNT
 } fp_view_type;
-
-/*
-typedef union {
-	fp_view_frame_data* FRAME;
-	fp_view_screen_data* SCREEN;
-	fp_view_anim_data* ANIM;
-	fp_view_layer_data* LAYER;
-	fp_view_transition_data* TRANSITION;
-} fp_view_data;
-*/
 
 typedef void fp_view_data;
 
@@ -37,10 +28,12 @@ typedef struct {
 	fp_viewid id;
 	fp_viewid parent;
 	bool dirty; /* render should be called on this before fp_get_frame */
+	bool composite; /* on free_view all child views and frames are freed */
 	fp_view_data* data;
 } fp_view;
 
-fp_viewid fp_create_view(fp_view_type type, fp_viewid parent, fp_view_data* data); /* used internally */
+fp_viewid fp_create_view(fp_view_type type, bool composite, fp_view_data* data); /* used internally */
+bool fp_free_view(fp_viewid id);
 
 fp_view* fp_get_view(fp_viewid id);
 fp_frameid fp_get_view_frame(fp_viewid id);
@@ -56,6 +49,7 @@ typedef struct {
 	fp_frameid (*get_view_frame) (fp_view*);
 	bool (*render_view) (fp_view*);
 	bool (*onnext_render) (fp_view*); /* rename... */
+	bool (*free_view) (fp_view*); /* clean up any memory the view has allocated itself. */
 } fp_view_register_data;
 
 /* TODO: do this differently */

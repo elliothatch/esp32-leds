@@ -8,13 +8,17 @@
 #include "anim-view.h"
 
 fp_viewid fp_create_transition_view(
-	fp_viewid* pageIds,
+	unsigned int width,
+	unsigned int height,
 	unsigned int pageCount,
 	fp_transition transition,
-	unsigned int transitionPeriodMs,
-	unsigned int width,
-	unsigned int height
+	unsigned int transitionPeriodMs
 ) {
+
+	if(transition.viewA == 0 || transition.viewB == 0) {
+		printf("error: fp_create_transition_view: must provide valid transition\n");
+		return 0;
+	}
 
 	fp_viewid* pages = malloc(pageCount * sizeof(fp_viewid));
 	if(!pages) {
@@ -22,7 +26,7 @@ fp_viewid fp_create_transition_view(
 		return 0;
 	}
 
-	fp_view_transition_data* transitionData = malloc(sizeof(fp_view_transition_data));
+	fp_transition_view_data* transitionData = malloc(sizeof(fp_transition_view_data));
 	if(!transitionData) {
 		printf("error: fp_create_transition_view: failed to allocate memory for transitionData\n");
 		free(pages);
@@ -34,33 +38,68 @@ fp_viewid fp_create_transition_view(
 	transitionData->pageIndex = 0;
 	transitionData->previousPageIndex = 0;
 	transitionData->frame = fp_create_frame(width, height, rgb(0,0,0));
-	
-
-	if(transition.viewA == 0 && transition.viewB == 0) {
-		// TODO: handle/error when missing one view from transition
-		transition = fp_create_sliding_transition( width, height, 1000/2);
-	}
-
 	transitionData->transition = transition;
 	transitionData->blendFn = &rgb_alpha;
 	transitionData->transitionPeriodMs = transitionPeriodMs;
 
-	fp_viewid id = fp_create_view(FP_VIEW_TRANSITION, 0, transitionData);
+	fp_viewid id = fp_create_view(FP_VIEW_TRANSITION, false, transitionData);
 
 	/* init pages */
 	for(int i = 0; i < pageCount; i++) {
+		pages[i] = fp_create_frame_view(width, height, rgb(0,0,0));
+		fp_get_view(pages[i])->parent = id;
+	}
 
-		fp_viewid pageView = 0;
+	fp_get_view(transition.viewA)->parent = id;
+	fp_get_view(transition.viewB)->parent = id;
 
-		if(pageIds == NULL || pageIds[i] == 0) {
-			pageView = fp_create_frame_view(width, height, rgb(0,0,0));
-		}
-		else {
-			pageView = pageIds[i];
-		}
+	return id;
+}
 
-		pages[i] = pageView;
-		(&viewPool[pageView])->parent = id;
+fp_viewid fp_create_transition_view_composite(
+	unsigned int width,
+	unsigned int height,
+	fp_viewid* pages, 
+	unsigned int pageCount,
+	fp_transition transition,
+	unsigned int transitionPeriodMs
+) {
+
+	if(transition.viewA == 0 || transition.viewB == 0) {
+		printf("error: fp_create_transition_view_composite: must provide valid transition\n");
+		return 0;
+	}
+
+
+	fp_viewid* newPages = malloc(pageCount * sizeof(fp_viewid));
+	if(!newPages) {
+		printf("error: fp_create_transition_view_composite: failed to allocate memory for pages\n");
+		return 0;
+	}
+
+	fp_transition_view_data* transitionData = malloc(sizeof(fp_transition_view_data));
+	if(!transitionData) {
+		printf("error: fp_create_transition_view_composite: failed to allocate memory for transitionData\n");
+		free(newPages);
+		return 0;
+	}
+
+	transitionData->pageCount = pageCount;
+	transitionData->pages = newPages;
+	transitionData->pageIndex = 0;
+	transitionData->previousPageIndex = 0;
+	transitionData->frame = fp_create_frame(width, height, rgb(0,0,0));
+	
+	transitionData->transition = transition;
+	transitionData->blendFn = &rgb_alpha;
+	transitionData->transitionPeriodMs = transitionPeriodMs;
+
+	fp_viewid id = fp_create_view(FP_VIEW_TRANSITION, true, transitionData);
+
+	/* copy pages */
+	for(int i = 0; i < pageCount; i++) {
+		newPages[i] = pages[i];
+		fp_get_view(newPages[i])->parent = id;
 	}
 
 	fp_get_view(transition.viewA)->parent = id;
@@ -71,7 +110,7 @@ fp_viewid fp_create_transition_view(
 
 bool fp_transition_loop(fp_viewid transitionView, bool reverse) {
 	fp_view* view = fp_get_view(transitionView);
-	fp_view_transition_data* transitionData = view->data;
+	fp_transition_view_data* transitionData = view->data;
 
 	TickType_t currentTick = xTaskGetTickCount();
 
@@ -81,7 +120,7 @@ bool fp_transition_loop(fp_viewid transitionView, bool reverse) {
 
 bool fp_transition_set(fp_viewid transitionView, unsigned int pageIndex) {
 	fp_view* view = fp_get_view(transitionView);
-	fp_view_transition_data* transitionData = view->data;
+	fp_transition_view_data* transitionData = view->data;
 
 	transitionData->previousPageIndex = transitionData->pageIndex;
 	transitionData->pageIndex = pageIndex % transitionData->pageCount;
@@ -91,14 +130,14 @@ bool fp_transition_set(fp_viewid transitionView, unsigned int pageIndex) {
 
 bool fp_transition_next(fp_viewid transitionView) {
 	fp_view* view = fp_get_view(transitionView);
-	fp_view_transition_data* transitionData = view->data;
+	fp_transition_view_data* transitionData = view->data;
 
 	return fp_transition_set(transitionView, (transitionData->pageIndex + 1) % transitionData->pageCount);
 }
 
 bool fp_transition_prev(fp_viewid transitionView) {
 	fp_view* view = fp_get_view(transitionView);
-	fp_view_transition_data* transitionData = view->data;
+	fp_transition_view_data* transitionData = view->data;
 
 	return fp_transition_set(
 		transitionView,
@@ -110,11 +149,11 @@ bool fp_transition_prev(fp_viewid transitionView) {
 }
 
 fp_frameid fp_transition_view_get_frame(fp_view* view) {
-	return ((fp_view_transition_data*)view->data)->frame;
+	return ((fp_transition_view_data*)view->data)->frame;
 }
 
 bool fp_transition_view_render(fp_view* view) {
-	fp_view_transition_data* transitionData = view->data;
+	fp_transition_view_data* transitionData = view->data;
 	// TODO: add anim_view start/stop/pause functions
 	// add nextPage, previousPage, setPage, cycle functions that trigger transition animation playback
 	fp_frame* frame = fp_get_frame(transitionData->frame);
@@ -159,7 +198,7 @@ bool fp_transition_view_render(fp_view* view) {
 
 bool fp_transition_view_onnext_render(fp_view* view) {
 	TickType_t currentTick = xTaskGetTickCount();
-	fp_view_transition_data* transitionData = view->data;
+	fp_transition_view_data* transitionData = view->data;
 	if(transitionData->loop != 0) {
 		if(transitionData->loop > 0) {
 			fp_transition_next(view->id);
@@ -180,16 +219,16 @@ fp_transition fp_create_sliding_transition(unsigned int width, unsigned int heig
 	unsigned int frameCount = width + 1;
 
 	fp_transition transition = {
-		fp_create_anim_view(NULL, frameCount, frameratePeriodMs, width, height),
-		fp_create_anim_view(NULL, frameCount, frameratePeriodMs, width, height)
+		fp_create_anim_view(width, height, frameCount, frameratePeriodMs),
+		fp_create_anim_view(width, height, frameCount, frameratePeriodMs)
 	};
 
 	fp_view* transitionViewA = fp_get_view(transition.viewA);
 	fp_view* transitionViewB = fp_get_view(transition.viewB);
 
 	for(int i = 0; i < frameCount; i++) {
-		fp_frame* frameA = fp_get_frame(fp_get_view_frame(((fp_view_anim_data*)transitionViewA->data)->frames[i]));
-		fp_frame* frameB = fp_get_frame(fp_get_view_frame(((fp_view_anim_data*)transitionViewB->data)->frames[i]));
+		fp_frame* frameA = fp_get_frame(fp_get_view_frame(((fp_anim_view_data*)transitionViewA->data)->frames[i]));
+		fp_frame* frameB = fp_get_frame(fp_get_view_frame(((fp_anim_view_data*)transitionViewB->data)->frames[i]));
 
 		for(int row = 0; row < height; row++) {
 			for(int col = 0; col < width; col++) {
@@ -237,4 +276,19 @@ fp_transition fp_create_sliding_transition(unsigned int width, unsigned int heig
 	 */
 
 	return transition;
+}
+
+bool fp_transition_view_free(fp_view* view) {
+	fp_transition_view_data* transitionData = view->data;
+	if(!view->composite) {
+		for(int i = 0; i < transitionData->pageCount; i++) {
+			fp_free_view(transitionData->pages[i]);
+		}
+	}
+
+	fp_free_frame(transitionData->frame);
+	free(transitionData->pages);
+	free(transitionData);
+
+	return true;
 }

@@ -9,11 +9,11 @@
 struct led_state ledState;
 
 fp_frameid fp_ws2812_view_get_frame(fp_view* view) {
-	return ((fp_view_ws2812_data*)view->data)->frame;
+	return ((fp_ws2812_view_data*)view->data)->frame;
 }
 
 bool fp_ws2812_view_render(fp_view* view) {
-	fp_view_ws2812_data* screenData = view->data;
+	fp_ws2812_view_data* screenData = view->data;
 	if(screenData->childView) {
 		fp_fset_rect(
 			screenData->frame,
@@ -33,7 +33,7 @@ bool fp_ws2812_view_onnext_render(fp_view* view) {
 
 
 fp_viewid fp_create_ws2812_view(unsigned int width, unsigned int height) {
-	fp_view_ws2812_data * screenData = malloc(sizeof(fp_view_ws2812_data));
+	fp_ws2812_view_data * screenData = malloc(sizeof(fp_ws2812_view_data));
 	if(!screenData) {
 		printf("error: fp_create_ws2812_view: failed to allocate memory for ws2812Data\n");
 		return 0;
@@ -42,7 +42,7 @@ fp_viewid fp_create_ws2812_view(unsigned int width, unsigned int height) {
 	screenData->frame = fp_create_frame(width, height, rgb(0,0,0));
 	screenData->childView = 0;
 
-	return fp_create_view(FP_VIEW_WS2812, 0, screenData);
+	return fp_create_view(FP_VIEW_WS2812, false, screenData);
 }
 
 /* TODO: this makes some unnecessary copies and hardcodes one fixed-size LED array */
@@ -59,6 +59,15 @@ bool fp_render_leds_ws2812(fp_frameid id) {
 	/* } */
 	memcpy(ledState.leds, frame->pixels, fmin(frame->length, NUM_LEDS) * sizeof(((fp_frame*)0)->pixels));
 	ws2812_write_leds(ledState);
+
+	return true;
+}
+
+bool fp_ws2812_view_free(fp_view* view) {
+	fp_ws2812_view_data* screenData = view->data;
+
+	fp_free_frame(screenData->frame);
+	free(screenData);
 
 	return true;
 }

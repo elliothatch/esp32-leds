@@ -10,14 +10,20 @@
  * @param layerWidth - width of created frames
  * @param layerHeight - height of created frames
  */
-fp_viewid fp_create_layer_view(fp_viewid* views, unsigned int layerCount, unsigned int width, unsigned int height, unsigned int layerWidth, unsigned int layerHeight) {
+fp_viewid fp_create_layer_view(
+	unsigned int width,
+	unsigned int height,
+	unsigned int layerWidth,
+	unsigned int layerHeight,
+	unsigned int layerCount
+) {
 	fp_layer* layers = malloc(layerCount * sizeof(fp_layer));
 	if(!layers) {
 		printf("error: fp_create_layer_view: failed to allocate memory for layers\n");
 		return 0;
 	}
 
-	fp_view_layer_data* layerData = malloc(sizeof(fp_view_layer_data));
+	fp_layer_view_data* layerData = malloc(sizeof(fp_layer_view_data));
 	if(!layerData) {
 		printf("error: fp_create_layer_view: failed to allocate memory for layerData\n");
 		free(layers);
@@ -28,20 +34,12 @@ fp_viewid fp_create_layer_view(fp_viewid* views, unsigned int layerCount, unsign
 	layerData->layers = layers;
 	layerData->frame = fp_create_frame(width, height, rgb(0,0,0));
 
-	fp_viewid id = fp_create_view(FP_VIEW_LAYER, 0, layerData);
+	fp_viewid id = fp_create_view(FP_VIEW_LAYER, false, layerData);
 
 	/* init layers */
 	for(int i = 0; i < layerCount; i++) {
-
 		fp_viewid layerView = 0;
-
-		if(views == NULL || views[i] == 0) {
-			layerView = fp_create_frame_view(layerWidth, layerHeight, rgb(0,0,0));
-		}
-		else {
-			layerView = views[i];
-		}
-
+		layerView = fp_create_frame_view(layerWidth, layerHeight, rgb(0,0,0));
 		fp_layer layer = {
 			layerView,
 			FP_BLEND_REPLACE,
@@ -50,18 +48,62 @@ fp_viewid fp_create_layer_view(fp_viewid* views, unsigned int layerCount, unsign
 			255
 		};
 		layers[i] = layer;
-		(&viewPool[layer.view])->parent = id;
+
+		fp_get_view(layer.view)->parent = id;
+	}
+
+	return id;
+}
+
+fp_viewid fp_create_layer_view_composite(
+	unsigned int width,
+	unsigned int height,
+	fp_viewid* layers,
+	unsigned int layerCount
+) {
+	fp_layer* newLayers = malloc(layerCount * sizeof(fp_layer));
+	if(!newLayers) {
+		printf("error: fp_create_layer_view: failed to allocate memory for layers\n");
+		return 0;
+	}
+
+	fp_layer_view_data* layerData = malloc(sizeof(fp_layer_view_data));
+	if(!layerData) {
+		printf("error: fp_create_layer_view: failed to allocate memory for layerData\n");
+		free(newLayers);
+		return 0;
+	}
+
+	layerData->layerCount = layerCount;
+	layerData->layers = newLayers;
+	layerData->frame = fp_create_frame(width, height, rgb(0,0,0));
+
+	fp_viewid id = fp_create_view(FP_VIEW_LAYER, true, layerData);
+
+	/* copy layers */
+	for(int i = 0; i < layerCount; i++) {
+		fp_viewid layerView = layers[i];
+		fp_layer layer = {
+			layerView,
+			FP_BLEND_REPLACE,
+			0,
+			0,
+			255
+		};
+		newLayers[i] = layer;
+
+		fp_get_view(layer.view)->parent = id;
 	}
 
 	return id;
 }
 
 fp_frameid fp_layer_view_get_frame(fp_view* view) {
-	return ((fp_view_layer_data*)view->data)->frame;
+	return ((fp_layer_view_data*)view->data)->frame;
 }
 
 bool fp_layer_view_render(fp_view* view) {
-	fp_view_layer_data* layerData = view->data;
+	fp_layer_view_data* layerData = view->data;
 	// clear
 	fp_frame* layerFrame = fp_get_frame(layerData->frame);
 	fp_ffill_rect(
@@ -127,6 +169,21 @@ bool fp_layer_view_render(fp_view* view) {
 }
 
 bool fp_layer_view_onnext_render(fp_view* view) {
+	return true;
+}
+
+bool fp_layer_view_free(fp_view* view) {
+	fp_layer_view_data* layerData = view->data;
+	if(!view->composite) {
+		for(int i = 0; i < layerData->layerCount; i++) {
+			fp_free_view(layerData->layers[i].view);
+		}
+	}
+
+	fp_free_frame(layerData->frame);
+	free(layerData->layers);
+	free(layerData);
+
 	return true;
 }
 

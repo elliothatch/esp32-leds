@@ -24,13 +24,29 @@ typedef struct {
 	/** stores the result of render */
 	fp_frameid frame;
 
-} fp_view_transition_data;
+} fp_transition_view_data;
 
-fp_viewid fp_create_transition_view(fp_viewid* pageIds, unsigned int pageCount, fp_transition transition, unsigned int transitionPeriodMs, unsigned int width, unsigned int height);
+fp_viewid fp_create_transition_view(
+	unsigned int width,
+	unsigned int height,
+	unsigned int pageCount,
+	fp_transition transition,
+	unsigned int transitionPeriodMs
+);
+
+fp_viewid fp_create_transition_view_composite(
+	unsigned int width,
+	unsigned int height,
+	fp_viewid* pages, 
+	unsigned int pageCount,
+	fp_transition transition,
+	unsigned int transitionPeriodMs
+);
 
 fp_frameid fp_transition_view_get_frame(fp_view* view);
 bool fp_transition_view_render(fp_view* view);
 bool fp_transition_view_onnext_render(fp_view* view);
+bool fp_transition_view_free(fp_view* view);
 
 bool fp_transition_loop(fp_viewid transitionView, bool reverse);
 bool fp_transition_set(fp_viewid transitionView, unsigned int pageIndex);
@@ -43,7 +59,8 @@ fp_transition fp_create_sliding_transition(unsigned int width, unsigned int heig
 static const fp_view_register_data fp_transition_view_register_data = {
 	&fp_transition_view_get_frame,
 	&fp_transition_view_render,
-	&fp_transition_view_onnext_render
+	&fp_transition_view_onnext_render,
+	&fp_transition_view_free
 };
 
 #endif /* TRANSITION_VIEW_H */

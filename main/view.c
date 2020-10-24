@@ -20,7 +20,7 @@ bool fp_register_view_type(fp_view_type viewType, fp_view_register_data register
 
 /* fp_view viewPool[FP_VIEW_COUNT] = {{ FP_VIEW_FRAME, 0, false, {.FRAME = 0}}}; */
 unsigned int viewCount = 1;
-fp_view viewPool[FP_VIEW_COUNT] = {{ FP_VIEW_FRAME, 0, 0, false, NULL}};
+fp_view viewPool[FP_VIEW_COUNT] = {{ FP_VIEW_FRAME, 0, 0, false, false, NULL}};
 
 fp_view* fp_get_view(fp_viewid id) {
 	if(id >= viewCount) {
@@ -31,7 +31,7 @@ fp_view* fp_get_view(fp_viewid id) {
 	return &viewPool[id];
 }
 
-fp_viewid fp_create_view(fp_view_type type, fp_viewid parent, fp_view_data* data) {
+fp_viewid fp_create_view(fp_view_type type, bool composite, fp_view_data* data) {
 	if(viewCount >= FP_VIEW_COUNT) {
 		printf("error: fp_create_view: view pool full. limit: %d\n", FP_VIEW_COUNT);
 		return 0;
@@ -41,8 +41,9 @@ fp_viewid fp_create_view(fp_view_type type, fp_viewid parent, fp_view_data* data
 
 	viewPool[id].type = type;
 	viewPool[id].id = id;
-	viewPool[id].parent = parent;
+	viewPool[id].parent = 0;
 	viewPool[id].dirty = true;
+	viewPool[id].composite = composite;
 	viewPool[id].data = data;
 
 	if(DEBUG) {
@@ -50,6 +51,13 @@ fp_viewid fp_create_view(fp_view_type type, fp_viewid parent, fp_view_data* data
 	}
 
 	return id;
+}
+
+bool fp_free_view(fp_viewid id) {
+	fp_view* view = fp_get_view(id);
+	bool result = registered_views[view->type].free_view(view);
+	// TODO: clean up view from pool
+	return result && true;
 }
 
 /* can trigger re-render on dirty views */

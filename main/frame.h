@@ -27,6 +27,8 @@ unsigned int fp_calc_index(unsigned int x, unsigned int y, unsigned int width);
  * if the frame could not be created, returns id 0, which points to the NULL frame (all fields 0) */
 fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color color);
 
+bool fp_free_frame(fp_frameid frame);
+
 /* retrieve the frame. if there is no frame with the id, returns the NULL frame (all values 0)
  * only use if you cannot achieve what you need with the other commands */
 fp_frame* fp_get_frame(fp_frameid id);
