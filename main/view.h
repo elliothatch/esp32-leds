@@ -5,8 +5,6 @@
 
 #include "frame.h"
 
-#define FP_VIEW_COUNT 512
-
 /* fp: fresh pixel */
 
 typedef unsigned int fp_viewid;
@@ -32,6 +30,8 @@ typedef struct {
 	fp_view_data* data;
 } fp_view;
 
+bool fp_view_init(unsigned int capacity);
+
 fp_viewid fp_create_view(fp_view_type type, bool composite, fp_view_data* data); /* used internally */
 bool fp_free_view(fp_viewid id);
 
@@ -40,8 +40,6 @@ fp_frameid fp_get_view_frame(fp_viewid id);
 void fp_mark_view_dirty(fp_viewid id);
 bool fp_render_view(fp_viewid id);
 bool fp_onnext_render(fp_viewid id);
-
-extern fp_view viewPool[FP_VIEW_COUNT];
 
 /* fp_view_type fp_register_view_type(render_func, get_view_frame_func, pending_view_update_func) */
 

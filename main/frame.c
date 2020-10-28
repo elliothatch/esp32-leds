@@ -7,19 +7,34 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
+#include "pool.h"
+
 unsigned int fp_calc_index(unsigned int x, unsigned int y, unsigned int width) {
 	return y * width + x % width;
 }
 
-unsigned int framePoolCount = 1;
-fp_frame framePool[FP_FRAME_COUNT] = {{ 0, 0, NULL}};
+fp_pool* framePool = NULL;
+fp_frame* zeroFrame;
+
+bool fp_frame_init(unsigned int capacity) {
+	framePool = fp_pool_init(capacity, sizeof(fp_frame));
+	zeroFrame = fp_pool_get(framePool, 0);
+	zeroFrame->length = 0;
+	zeroFrame->width = 0;
+	zeroFrame->pixels = NULL;
+
+	return true;
+}
+
+/* fp_frame framePool[FP_FRAME_COUNT] = {{ 0, 0, NULL}}; */
 
 /** locks fp_create_frame. allows multiple tasks to safely create frames */
 SemaphoreHandle_t createFrameLock = NULL;
 
 fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color color) {
-	if(framePoolCount >= FP_FRAME_COUNT) {
-		printf("error: fp_create_frame: frame pool full. limit: %d\n", FP_FRAME_COUNT);
+	fp_frameid id = fp_pool_add(framePool);
+	if(id == 0) {
+		printf("error: fp_create_frame: failed to add frame\n");
 		return 0;
 	}
 
@@ -28,6 +43,7 @@ fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color co
 	rgb_color* pixels = malloc(length * sizeof(rgb_color));
 	if(!pixels) {
 		printf("error: fp_create_frame: failed to allocate memory for pixels\n");
+		fp_pool_delete(framePool, id);
 		return 0;
 	}
 
@@ -35,7 +51,12 @@ fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color co
 		pixels[i] = color;
 	}
 
+	fp_frame* frame = fp_pool_get(framePool, id);
+	frame->length = length;
+	frame->width = width;
+	frame->pixels = pixels;
 
+	/*
 	if(!createFrameLock) {
 		createFrameLock = xSemaphoreCreateBinary();
 		if(!createFrameLock) {
@@ -51,6 +72,7 @@ fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color co
 	framePool[id].length = length;
 	framePool[id].width = width;
 	framePool[id].pixels = pixels;
+	*/
 
 	/* printf("create frame: %d %d %d\n", */ 
 	/* 	id, */
@@ -66,17 +88,17 @@ fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color co
 }
 
 bool fp_free_frame(fp_frameid frame) {
-	// TODO: remove frame from pool
-	return true;
+	return fp_pool_delete(framePool, frame);
 }
 
 fp_frame* fp_get_frame(fp_frameid id) {
-	if(id >= framePoolCount) {
-		printf("error: fp_get_frame: id %d too large, max id: %d\n", id, framePoolCount-1);
-		return &framePool[0];
-	}
+	return fp_pool_get(framePool, id);
+	/* if(id >= framePoolCount) { */
+	/* 	printf("error: fp_get_frame: id %d too large, max id: %d\n", id, framePoolCount-1); */
+	/* 	return &framePool[0]; */
+	/* } */
 
-	return &framePool[id];
+	/* return &framePool[id]; */
 }
 
 unsigned int fp_frame_height(fp_frame* frame) {
@@ -89,11 +111,11 @@ bool fp_fset_rect(
 		unsigned int y,
 		fp_frame* frame
 		) {
-	if(id >= framePoolCount) {
+
+	fp_frame* targetFrame = fp_pool_get(framePool, id);
+	if(targetFrame == 0) {
 		return false;
 	}
-
-	fp_frame* targetFrame = &framePool[id];
 
 	for(int row = 0; row < fmin(frame->length / frame->width, fmax(0, targetFrame->length / targetFrame->width - y)); row++) {
 		memcpy(
@@ -114,11 +136,12 @@ bool fp_ffill_rect(
 		unsigned int height,
 		rgb_color color
 		) {
-	if(id >= framePoolCount) {
+
+	fp_frame* frame = fp_pool_get(framePool, id);
+	if(frame == 0) {
 		return false;
 	}
 
-	fp_frame* frame = &framePool[id];
 	for(int row = 0; row < fmin(height, fmax(0,frame->length / frame->width - y)); row++) {
 		for(int col = 0; col < fmin(width, fmax(0, frame->width - x)); col++) {
 			frame->pixels[fp_calc_index(x + col, y + row, frame->width)] = color;
@@ -135,11 +158,10 @@ bool fp_fset_rect_transparent(
 		unsigned int y,
 		fp_frame* frame
 		) {
-	if(id >= framePoolCount) {
+	fp_frame* targetFrame = fp_pool_get(framePool, id);
+	if(targetFrame == 0) {
 		return false;
 	}
-
-	fp_frame* targetFrame = &framePool[id];
 
 	for(int row = 0; row < fmin(frame->length / frame->width, fmax(0, targetFrame->length / targetFrame->width - y)); row++) {
 		for(int col = 0; col < fmin(frame->width, fmax(0, targetFrame->width - x)); col++) {
@@ -185,11 +207,10 @@ bool fp_fblend_rect(
 	fp_frame* frame,
 	uint8_t alphaSrc
 ) {
-	if(id >= framePoolCount) {
+	fp_frame* targetFrame = fp_pool_get(framePool, id);
+	if(targetFrame == 0) {
 		return false;
 	}
-
-	fp_frame* targetFrame = &framePool[id];
 
 	for(int row = 0; row < fmin(frame->length / frame->width, (targetFrame->length / targetFrame->width) - y); row++) {
 		for(int col = 0; col < fmin(frame->width, targetFrame->width - x); col++) {

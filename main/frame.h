@@ -6,7 +6,6 @@
 #include "color.h"
 
 #define DEBUG true
-#define FP_FRAME_COUNT 512
 
 /* fp: fresh pixel */
 
@@ -20,6 +19,8 @@ typedef struct {
 } fp_frame;
 
 typedef unsigned int fp_frameid;
+
+bool fp_frame_init(unsigned int capacity);
 
 unsigned int fp_calc_index(unsigned int x, unsigned int y, unsigned int width);
 
@@ -94,7 +95,5 @@ bool fp_fblend_rect(
 	uint8_t alphaSrc
 
 );
-
-extern fp_frame framePool[FP_FRAME_COUNT];
 
 #endif /* FRAME_H */

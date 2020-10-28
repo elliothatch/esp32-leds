@@ -27,6 +27,7 @@
 #include "render.h"
 #include "ppm.h"
 
+#include "view.h"
 #include "views/frame-view.h"
 #include "views/ws2812-view.h"
 #include "views/anim-view.h"
@@ -43,7 +44,6 @@
 #define GPIO_INPUT_PIN_MASK ((1ULL<<GPIO_INPUT_PIN_0) | (1ULL<<GPIO_INPUT_PIN_1) | (1ULL<<GPIO_INPUT_PIN_2))
 #define ESP_INTR_FLAG_DEFAULT 0
 
-
 fp_viewid create_animation_test();
 fp_viewid create_animated_layer_test();
 fp_viewid create_layer_alpha_test();
@@ -53,8 +53,31 @@ fp_viewid create_nvs_image_test();
 
 void init_gpio_test();
 
+typedef struct {
+	bool (*init_mode) ();
+	bool (*free_mode) ();
+	void* data;
+} demo_mode;
+
+bool frame_view_demo_init() {
+}
+
+bool frame_view_demo_free() {
+}
+
+demo_mode frameDemo = {
+	&frame_view_demo_init,
+	&frame_view_demo_free
+};
+
 void app_main()
 {
+	/*
+	 * TODO: add data structure for frame/view pools
+	 * use data structure to implement create/free properly
+	 * add test for dynamic view
+	 * add multi-test with rotary encoder selection
+	 */
 	/*BaseType_t taskResult = */
 
     /* Print chip information */
@@ -81,6 +104,50 @@ void app_main()
 	}
 	xSemaphoreGive(ledShutdownLock);
 
+	init_gpio_test();
+
+
+	fp_frame_init(512);
+	fp_view_init(512);
+
+	ws2812_control_init();
+
+	fp_register_view_type(FP_VIEW_FRAME, fp_frame_view_register_data);
+	fp_register_view_type(FP_VIEW_WS2812, fp_ws2812_view_register_data);
+	fp_register_view_type(FP_VIEW_ANIM, fp_anim_view_register_data);
+	fp_register_view_type(FP_VIEW_LAYER, fp_layer_view_register_data);
+	fp_register_view_type(FP_VIEW_TRANSITION, fp_transition_view_register_data);
+	fp_register_view_type(FP_VIEW_DYNAMIC, fp_dynamic_view_register_data);
+
+	fp_viewid screenViewId = fp_create_ws2812_view(8, 8);
+
+	/* fp_viewid mainViewId = create_animation_test(); */
+	fp_viewid mainViewId = create_animated_layer_test();
+	/* fp_viewid mainViewId = create_layer_alpha_test(); */
+	/* fp_viewid mainViewId = create_transition_test(); */
+	/* fp_viewid mainViewId = create_animated_transition_test(); */
+	/* fp_viewid mainViewId = create_nvs_image_test(); */
+
+
+	fp_view* screenView = fp_get_view(screenViewId);
+	fp_view* mainView = fp_get_view(mainViewId);
+
+	mainView->parent = screenViewId;
+	((fp_ws2812_view_data*)screenView->data)->childView = mainViewId;
+
+	fp_task_render_params renderParams = { 1000/60, screenViewId, ledQueue, ledShutdownLock };
+
+	xTaskCreate(fp_task_render, "Render LED Task", 2048*4, &renderParams, 1, NULL);
+
+	while(true) {
+		vTaskDelay(portMAX_DELAY);
+	}
+
+	xSemaphoreTake(ledShutdownLock, portMAX_DELAY);
+    printf("Restarting now.\n");
+    fflush(stdout);
+    esp_restart();
+
 	/*
 	fp_frameid frame1 = fp_create_frame(8, 8, rgb(0, 0, 0));
 	for(int i = 0; i < 8; i++) {
@@ -105,38 +172,6 @@ void app_main()
 	}
 	*/
 
-	ws2812_control_init();
-
-	fp_register_view_type(FP_VIEW_FRAME, fp_frame_view_register_data);
-	fp_register_view_type(FP_VIEW_WS2812, fp_ws2812_view_register_data);
-	fp_register_view_type(FP_VIEW_ANIM, fp_anim_view_register_data);
-	fp_register_view_type(FP_VIEW_LAYER, fp_layer_view_register_data);
-	fp_register_view_type(FP_VIEW_TRANSITION, fp_transition_view_register_data);
-	fp_register_view_type(FP_VIEW_DYNAMIC, fp_dynamic_view_register_data);
-
-
-	fp_viewid screenViewId = fp_create_ws2812_view(8, 8);
-
-	/* fp_viewid mainViewId = create_animation_test(); */
-	fp_viewid mainViewId = create_animated_layer_test();
-	/* fp_viewid mainViewId = create_layer_alpha_test(); */
-	/* fp_viewid mainViewId = create_transition_test(); */
-	/* fp_viewid mainViewId = create_animated_transition_test(); */
-	/* fp_viewid mainViewId = create_nvs_image_test(); */
-
-
-	fp_view* screenView = fp_get_view(screenViewId);
-	fp_view* mainView = fp_get_view(mainViewId);
-
-	mainView->parent = screenViewId;
-	((fp_ws2812_view_data*)screenView->data)->childView = mainViewId;
-
-	fp_task_render_params renderParams = { 1000/60, screenViewId, ledQueue, ledShutdownLock };
-
-	xTaskCreate(fp_task_render, "Render LED Task", 2048*4, &renderParams, 1, NULL);
-
-
-	init_gpio_test();
 
 	/* xQueueSend( */
 
@@ -157,18 +192,10 @@ void app_main()
 
     /* ws2812_write_leds(new_state); */
 
-	while(true) {
-		vTaskDelay(portMAX_DELAY);
-	}
     /* for (int i = 5; i >= 0; i--) { */
     /*     printf("Restarting in %d seconds...\n", i); */
     /*     vTaskDelay(1000 / portTICK_PERIOD_MS); */
     /* } */
-
-	xSemaphoreTake(ledShutdownLock, portMAX_DELAY);
-    printf("Restarting now.\n");
-    fflush(stdout);
-    esp_restart();
 }
 
 fp_viewid create_animation_test(fp_viewid screenView) {
