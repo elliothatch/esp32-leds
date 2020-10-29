@@ -37,6 +37,9 @@
 
 #define LED_QUEUE_LENGTH 16 
 
+#define SCREEN_WIDTH 8
+#define SCREEN_HEIGHT 8
+
 #define GPIO_INPUT_PIN_0 19
 #define GPIO_INPUT_PIN_1 21
 #define GPIO_INPUT_PIN_2 3
@@ -54,21 +57,144 @@ fp_viewid create_nvs_image_test();
 void init_gpio_test();
 
 typedef struct {
-	bool (*init_mode) ();
-	bool (*free_mode) ();
+	fp_viewid (*init_mode) (void**);
+	bool (*free_mode) (void**);
 	void* data;
 } demo_mode;
 
-bool frame_view_demo_init() {
+typedef struct {
+	fp_viewid frameView;
+} frame_view_demo_data;
+
+
+fp_viewid frame_view_demo_init(void** data) {
+	fp_viewid frameView = fp_frame_view_create(SCREEN_WIDTH, SCREEN_HEIGHT, rgb(0, 0, 0));
+	fp_frameid frameId = fp_view_get_frame(frameView);
+	for(int i = 0; i < SCREEN_WIDTH; i++) {
+		for(int j = 0; j < SCREEN_HEIGHT; j++) {
+			fp_fset(frameId, i, j, rgb(
+				255 - ((i+j)*255/(SCREEN_WIDTH+SCREEN_HEIGHT)),
+				i*255/SCREEN_WIDTH,
+				j*255/SCREEN_HEIGHT)
+		   );
+		}
+	}
+
+	*data = malloc(sizeof(frame_view_demo_data));
+	// TODO: add error check
+
+	frame_view_demo_data* frameData = *data;
+	frameData->frameView = frameView;
+
+	return frameView;
 }
 
-bool frame_view_demo_free() {
+bool frame_view_demo_free(void** data) {
+	frame_view_demo_data* frameData = *data;
+	fp_view_free(frameData->frameView);
+	free(*data);
+	return true;
 }
 
-demo_mode frameDemo = {
+typedef struct {
+	fp_viewid dynamicView;
+} dynamic_view_demo_data;
+
+
+bool dynamic_view_demo_render(fp_view* view) {
+	fp_dynamic_view_data* dynamicData = view->data;
+	fp_frame* frame = fp_frame_get(dynamicData->frame);
+
+	for(int i = 0; i < SCREEN_WIDTH; i++) {
+		for(int j = 0; j < SCREEN_HEIGHT; j++) {
+			rgb_color color = frame->pixels[fp_fcalc_index(i, j, frame->width)];
+			color.fields.r = fmax(color.fields.r-1, 0);
+			color.fields.g = fmax(color.fields.g-1, 0); 
+			color.fields.b = fmax(color.fields.b-1, 0);
+			/*
+			if(color.fields.r == 0
+				&& color.fields.g == 0
+				&& color.fields.b == 0) {
+				color.bits = esp_random();
+			}
+			*/
+
+			frame->pixels[fp_fcalc_index(i, j, frame->width)] = color;
+		}
+	}
+
+	/** raindrop */
+	TickType_t* lastDrop = dynamicData->data;
+	TickType_t currentTick = xTaskGetTickCount();
+	if(currentTick > *lastDrop + pdMS_TO_TICKS(100)) {
+		rgb_color color = {.bits = esp_random()};
+		frame->pixels[esp_random() % frame->length] = color;
+		*lastDrop = currentTick;
+	}
+
+	return true;
+
+	/* fp_frame* frame = fp_frame_get(dynamicData->frame); */
+	/* frame->pixels[0] */
+}
+
+fp_viewid dynamic_view_demo_init(void** data) {
+	TickType_t* lastDrop = malloc(sizeof(TickType_t));
+	*lastDrop = xTaskGetTickCount();
+	fp_viewid dynamicView = fp_dynamic_view_create(SCREEN_WIDTH, SCREEN_HEIGHT, dynamic_view_demo_render, NULL, lastDrop);
+	/* fp_frameid frameId = fp_view_get_frame(dynamicView); */
+
+	/** init with noisy pattern */
+	/*
+	for(int i = 0; i < SCREEN_WIDTH; i++) {
+		for(int j = 0; j < SCREEN_HEIGHT; j++) {
+			rgb_color color = {.bits = esp_random()};
+			fp_fset(frameId, i, j, color);
+		}
+	}
+	*/
+
+	*data = malloc(sizeof(dynamic_view_demo_data));
+	// TODO: add error check
+
+	frame_view_demo_data* dynamicData = *data;
+	dynamicData->frameView = dynamicView;
+
+	return dynamicView;
+}
+
+bool dynamic_view_demo_free(void** data) {
+	dynamic_view_demo_data* dynamicData = *data;
+	fp_dynamic_view_data* viewData = fp_view_get(dynamicData->dynamicView)->data;
+	TickType_t* lastDrop = viewData->data;
+	free(lastDrop);
+	fp_view_free(dynamicData->dynamicView);
+	free(*data);
+	return true;
+}
+
+
+demo_mode demos[] = {{
 	&frame_view_demo_init,
-	&frame_view_demo_free
-};
+	&frame_view_demo_free,
+	NULL
+}, {
+	&dynamic_view_demo_init,
+	&dynamic_view_demo_free,
+	NULL
+}};
+
+demo_mode* currentDemo = NULL;
+
+fp_viewid play_demo(demo_mode* demo) {
+	if(currentDemo != NULL) {
+		demo->free_mode(&currentDemo->data);
+	}
+
+	fp_viewid view = demo->init_mode(&demo->data);
+	currentDemo = demo;
+	return view;
+}
 
 void app_main()
 {
@@ -112,25 +238,29 @@ void app_main()
 
 	ws2812_control_init();
 
-	fp_register_view_type(FP_VIEW_FRAME, fp_frame_view_register_data);
-	fp_register_view_type(FP_VIEW_WS2812, fp_ws2812_view_register_data);
-	fp_register_view_type(FP_VIEW_ANIM, fp_anim_view_register_data);
-	fp_register_view_type(FP_VIEW_LAYER, fp_layer_view_register_data);
-	fp_register_view_type(FP_VIEW_TRANSITION, fp_transition_view_register_data);
-	fp_register_view_type(FP_VIEW_DYNAMIC, fp_dynamic_view_register_data);
+	fp_view_register_type(FP_VIEW_FRAME, fp_frame_view_register_data);
+	fp_view_register_type(FP_VIEW_WS2812, fp_ws2812_view_register_data);
+	fp_view_register_type(FP_VIEW_ANIM, fp_anim_view_register_data);
+	fp_view_register_type(FP_VIEW_LAYER, fp_layer_view_register_data);
+	fp_view_register_type(FP_VIEW_TRANSITION, fp_transition_view_register_data);
+	fp_view_register_type(FP_VIEW_DYNAMIC, fp_dynamic_view_register_data);
 
 	fp_viewid screenViewId = fp_create_ws2812_view(8, 8);
 
 	/* fp_viewid mainViewId = create_animation_test(); */
-	fp_viewid mainViewId = create_animated_layer_test();
+	/* fp_viewid mainViewId = create_animated_layer_test(); */
 	/* fp_viewid mainViewId = create_layer_alpha_test(); */
 	/* fp_viewid mainViewId = create_transition_test(); */
 	/* fp_viewid mainViewId = create_animated_transition_test(); */
 	/* fp_viewid mainViewId = create_nvs_image_test(); */
 
 
-	fp_view* screenView = fp_get_view(screenViewId);
-	fp_view* mainView = fp_get_view(mainViewId);
+	/* bootloader_random_enable(); */
+
+	fp_viewid mainViewId = play_demo(&demos[1]);
+
+	fp_view* screenView = fp_view_get(screenViewId);
+	fp_view* mainView = fp_view_get(mainViewId);
 
 	mainView->parent = screenViewId;
 	((fp_ws2812_view_data*)screenView->data)->childView = mainViewId;
@@ -202,13 +332,13 @@ fp_viewid create_animation_test(fp_viewid screenView) {
 	const unsigned int frameCount = 60;
 
 	fp_viewid animViewId = fp_create_anim_view(8, 8, frameCount, 3000/frameCount);
-	fp_view* animView = fp_get_view(animViewId);
+	fp_view* animView = fp_view_get(animViewId);
 	fp_anim_view_data* animData = animView->data;
 
 	for(int i = 0; i < frameCount; i++) {
 		for(int j = 0; j < 8; j++) {
 			fp_ffill_rect(
-				((fp_frame_view_data*)fp_get_view(animData->frames[i])->data)->frame,
+				((fp_frame_view_data*)fp_view_get(animData->frames[i])->data)->frame,
 				0, j,
 				8, 1,
 				hsv_to_rgb(hsv(((255*i/frameCount)+(255*j/8))%256, 255, 25))
@@ -229,7 +359,7 @@ fp_viewid create_animated_layer_test(fp_viewid screenView) {
 
 	for(int layerIndex = 0; layerIndex < layerCount - 1; layerIndex++) {
 		animViewIds[layerIndex] = fp_create_anim_view(4, 4, frameCount, 2000/frameCount);
-		fp_view* animView = fp_get_view(animViewIds[layerIndex]);
+		fp_view* animView = fp_view_get(animViewIds[layerIndex]);
 		fp_anim_view_data* animData = animView->data;
 
 		for(int i = 0; i < frameCount; i++) {
@@ -246,7 +376,7 @@ fp_viewid create_animated_layer_test(fp_viewid screenView) {
 				}
 				if(layerIndex == 0 || layerIndex == 3) {
 					fp_ffill_rect(
-						fp_get_view_frame(animData->frames[((layerIndex+1) % 2)*(frameCount - 1 - 2*i) + i]),
+						fp_view_get_frame(animData->frames[((layerIndex+1) % 2)*(frameCount - 1 - 2*i) + i]),
 						0, j,
 						4, 1,
 						hsv_to_rgb(hsv(
@@ -263,7 +393,7 @@ fp_viewid create_animated_layer_test(fp_viewid screenView) {
 				}
 				else {
 					fp_ffill_rect(
-						fp_get_view_frame(animData->frames[((layerIndex+1) % 2)*(frameCount - 1 - 2*i) + i]),
+						fp_view_get_frame(animData->frames[((layerIndex+1) % 2)*(frameCount - 1 - 2*i) + i]),
 						j, 0,
 						1, 4,
 						hsv_to_rgb(hsv(
@@ -285,13 +415,13 @@ fp_viewid create_animated_layer_test(fp_viewid screenView) {
 	/* mask fades in and out */
 	const unsigned int maskFrameCount = 60;
 	animViewIds[4] = fp_create_anim_view(4, 4, maskFrameCount, 4000/maskFrameCount);
-	fp_view* maskAnimView = fp_get_view(animViewIds[4]);
+	fp_view* maskAnimView = fp_view_get(animViewIds[4]);
 	fp_anim_view_data* maskAnimData = maskAnimView->data;
 
 	for(int i = 0; i < maskFrameCount; i++) {
 		unsigned int brightness = 50*abs(i - (int)maskFrameCount/2)/(maskFrameCount/2);
 		fp_ffill_rect(
-			fp_get_view_frame(maskAnimData->frames[i]),
+			fp_view_get_frame(maskAnimData->frames[i]),
 			0, 0,
 			4, 4,
 			rgb(brightness, brightness, brightness)
@@ -317,7 +447,7 @@ fp_viewid create_animated_layer_test(fp_viewid screenView) {
 
 	fp_viewid layerViewId = fp_create_layer_view_composite(8, 8, layerViews, layerCount);
 
-	fp_view* layerView = fp_get_view(layerViewId);
+	fp_view* layerView = fp_view_get(layerViewId);
 	fp_layer_view_data* layerData = layerView->data;
 	/*
 	printf("%d %d %d %d %d\n",
@@ -346,7 +476,7 @@ fp_viewid create_animated_layer_test(fp_viewid screenView) {
 
 			/*
 			fp_ffill_rect(
-				fp_get_view_frame(layer->view),
+				fp_view_get_frame(layer->view),
 				0, 0,
 				4, 4,
 				rgb(255, 0, 0)
@@ -355,7 +485,7 @@ fp_viewid create_animated_layer_test(fp_viewid screenView) {
 
 			/*
 			fp_ffill_rect(
-				fp_get_view_frame(layer->view),
+				fp_view_get_frame(layer->view),
 				1, 1,
 				2, 2,
 				rgb(0, 0, 0)
@@ -372,7 +502,7 @@ fp_viewid create_layer_alpha_test() {
 	const unsigned int layerCount = 4;
 
 	fp_viewid layerViewId = fp_create_layer_view(8, 8, 5, 5, layerCount);
-	fp_view* layerView = fp_get_view(layerViewId);
+	fp_view* layerView = fp_view_get(layerViewId);
 	fp_layer_view_data* layerData = layerView->data;
 
 	fp_layer* layers[layerCount];
@@ -384,7 +514,7 @@ fp_viewid create_layer_alpha_test() {
 	layers[0]->blendMode = FP_BLEND_ALPHA;
 	layers[0]->alpha = 255/4;
 	fp_ffill_rect(
-		fp_get_view_frame(layers[0]->view),
+		fp_view_get_frame(layers[0]->view),
 		0, 0,
 		5, 5,
 		rgb(255, 0, 0)
@@ -394,7 +524,7 @@ fp_viewid create_layer_alpha_test() {
 	layers[1]->blendMode = FP_BLEND_ALPHA;
 	layers[1]->alpha = 255/4;
 	fp_ffill_rect(
-		fp_get_view_frame(layers[1]->view),
+		fp_view_get_frame(layers[1]->view),
 		0, 0,
 		5, 5,
 		rgb(0, 255, 0)
@@ -405,7 +535,7 @@ fp_viewid create_layer_alpha_test() {
 	layers[2]->blendMode = FP_BLEND_ALPHA;
 	layers[2]->alpha = 255/4;
 	fp_ffill_rect(
-		fp_get_view_frame(layers[2]->view),
+		fp_view_get_frame(layers[2]->view),
 		0, 0,
 		5, 5,
 		rgb(0, 0, 255)
@@ -416,7 +546,7 @@ fp_viewid create_layer_alpha_test() {
 	layers[3]->blendMode = FP_BLEND_ALPHA;
 	layers[3]->alpha = 255*7/8;
 	fp_ffill_rect(
-		fp_get_view_frame(layers[3]->view),
+		fp_view_get_frame(layers[3]->view),
 		0, 0,
 		5, 5,
 		rgb(0, 0, 0)
@@ -457,7 +587,7 @@ fp_viewid create_layer_alpha_test() {
 		layer->alpha = alphas[i];
 
 		fp_ffill_rect(
-			fp_get_view_frame(layer->view),
+			fp_view_get_frame(layer->view),
 			0, 0,
 			width, height,
 			colors[i]
@@ -473,7 +603,7 @@ fp_viewid create_transition_test() {
 
 	fp_transition transition = fp_create_sliding_transition(8, 8, 1000/8);
 	fp_viewid transitionViewId = fp_create_transition_view(8, 8, pageCount, transition, 2000);
-	fp_view* transitionView = fp_get_view(transitionViewId);
+	fp_view* transitionView = fp_view_get(transitionViewId);
 	fp_transition_view_data* transitionData = transitionView->data;
 
 	rgb_color colors[] = {
@@ -484,7 +614,7 @@ fp_viewid create_transition_test() {
 
 	for(int i = 0; i < pageCount; i++) {
 		fp_ffill_rect(
-			fp_get_view_frame(transitionData->pages[i]),
+			fp_view_get_frame(transitionData->pages[i]),
 			0, 0,
 			8, 8,
 			colors[i]);
@@ -503,12 +633,12 @@ fp_viewid create_animated_transition_test() {
 
 	for(int pageIndex = 0; pageIndex < pageCount; pageIndex++) {
 		animViewIds[pageIndex] = fp_create_anim_view(8, 8, frameCount, 1000/frameCount);
-		fp_view* animView = fp_get_view(animViewIds[pageIndex]);
+		fp_view* animView = fp_view_get(animViewIds[pageIndex]);
 		fp_anim_view_data* animData = animView->data;
 
 		for(int i = 0; i < frameCount; i++) {
 			fp_ffill_rect(
-				fp_get_view_frame(animData->frames[i]),
+				fp_view_get_frame(animData->frames[i]),
 				0, 0,
 				8, 8,
 				hsv_to_rgb(hsv(
@@ -597,7 +727,7 @@ fp_viewid create_nvs_image_test() {
 	fclose(file);
 
 	fp_frameid frameid = fp_ppm_create_frame(fileBuffer, fileSize);
-	fp_viewid viewid = fp_create_frame_view_composite(frameid);
+	fp_viewid viewid = fp_frame_view_create_composite(frameid);
 
 	free(fileBuffer);
 

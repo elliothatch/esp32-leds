@@ -12,8 +12,8 @@ typedef struct {
 	fp_frameid frame;
 } fp_frame_view_data;
 
-fp_viewid fp_create_frame_view(unsigned int width, unsigned int height, rgb_color color);
-fp_viewid fp_create_frame_view_composite(fp_frameid frameid);
+fp_viewid fp_frame_view_create(unsigned int width, unsigned int height, rgb_color color);
+fp_viewid fp_frame_view_create_composite(fp_frameid frameid);
 
 fp_frameid fp_frame_view_get_frame(fp_view* view);
 bool fp_frame_view_render(fp_view* view);

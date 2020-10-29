@@ -59,7 +59,7 @@ fp_frameid fp_ppm_create_frame(char* bytes, size_t length) {
 	fp_ppm_image image = fp_ppm_parse(bytes, length);
 
 	fp_frameid frameid = fp_create_frame(image.width, image.height, rgb(0, 0, 0));
-	fp_frame* frame = fp_get_frame(frameid);
+	fp_frame* frame = fp_frame_get(frameid);
 
 	for(int i = 0; i < image.width * image.height; i++) {
 		frame->pixels[i] = rgb(image.pixels[i].r, image.pixels[i].g, image.pixels[i].b);

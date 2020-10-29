@@ -34,12 +34,12 @@ fp_viewid fp_create_layer_view(
 	layerData->layers = layers;
 	layerData->frame = fp_create_frame(width, height, rgb(0,0,0));
 
-	fp_viewid id = fp_create_view(FP_VIEW_LAYER, false, layerData);
+	fp_viewid id = fp_view_create(FP_VIEW_LAYER, false, layerData);
 
 	/* init layers */
 	for(int i = 0; i < layerCount; i++) {
 		fp_viewid layerView = 0;
-		layerView = fp_create_frame_view(layerWidth, layerHeight, rgb(0,0,0));
+		layerView = fp_frame_view_create(layerWidth, layerHeight, rgb(0,0,0));
 		fp_layer layer = {
 			layerView,
 			FP_BLEND_REPLACE,
@@ -49,7 +49,7 @@ fp_viewid fp_create_layer_view(
 		};
 		layers[i] = layer;
 
-		fp_get_view(layer.view)->parent = id;
+		fp_view_get(layer.view)->parent = id;
 	}
 
 	return id;
@@ -78,7 +78,7 @@ fp_viewid fp_create_layer_view_composite(
 	layerData->layers = newLayers;
 	layerData->frame = fp_create_frame(width, height, rgb(0,0,0));
 
-	fp_viewid id = fp_create_view(FP_VIEW_LAYER, true, layerData);
+	fp_viewid id = fp_view_create(FP_VIEW_LAYER, true, layerData);
 
 	/* copy layers */
 	for(int i = 0; i < layerCount; i++) {
@@ -92,7 +92,7 @@ fp_viewid fp_create_layer_view_composite(
 		};
 		newLayers[i] = layer;
 
-		fp_get_view(layer.view)->parent = id;
+		fp_view_get(layer.view)->parent = id;
 	}
 
 	return id;
@@ -105,7 +105,7 @@ fp_frameid fp_layer_view_get_frame(fp_view* view) {
 bool fp_layer_view_render(fp_view* view) {
 	fp_layer_view_data* layerData = view->data;
 	// clear
-	fp_frame* layerFrame = fp_get_frame(layerData->frame);
+	fp_frame* layerFrame = fp_frame_get(layerData->frame);
 	fp_ffill_rect(
 			layerData->frame,
 			0, 0,
@@ -121,7 +121,7 @@ bool fp_layer_view_render(fp_view* view) {
 						layerData->frame,
 						layerData->layers[i].offsetX,
 						layerData->layers[i].offsetY,
-						fp_get_frame(fp_get_view_frame(layerData->layers[i].view))
+						fp_frame_get(fp_view_get_frame(layerData->layers[i].view))
 						);
 				break;
 			case FP_BLEND_REPLACE:
@@ -129,7 +129,7 @@ bool fp_layer_view_render(fp_view* view) {
 						layerData->frame,
 						layerData->layers[i].offsetX,
 						layerData->layers[i].offsetY,
-						fp_get_frame(fp_get_view_frame(layerData->layers[i].view))
+						fp_frame_get(fp_view_get_frame(layerData->layers[i].view))
 						);
 				break;
 			case FP_BLEND_ADD:
@@ -137,7 +137,7 @@ bool fp_layer_view_render(fp_view* view) {
 						layerData->frame,
 						layerData->layers[i].offsetX,
 						layerData->layers[i].offsetY,
-						fp_get_frame(fp_get_view_frame(layerData->layers[i].view))
+						fp_frame_get(fp_view_get_frame(layerData->layers[i].view))
 						);
 				break;
 			case FP_BLEND_MULTIPLY:
@@ -145,7 +145,7 @@ bool fp_layer_view_render(fp_view* view) {
 						layerData->frame,
 						layerData->layers[i].offsetX,
 						layerData->layers[i].offsetY,
-						fp_get_frame(fp_get_view_frame(layerData->layers[i].view))
+						fp_frame_get(fp_view_get_frame(layerData->layers[i].view))
 						);
 				break;
 			case FP_BLEND_ALPHA:
@@ -157,7 +157,7 @@ bool fp_layer_view_render(fp_view* view) {
 							255,
 							layerData->layers[i].offsetX,
 							layerData->layers[i].offsetY,
-							fp_get_frame(fp_get_view_frame(layerData->layers[i].view)),
+							fp_frame_get(fp_view_get_frame(layerData->layers[i].view)),
 							srcAlpha
 							);
 					break;
@@ -176,11 +176,11 @@ bool fp_layer_view_free(fp_view* view) {
 	fp_layer_view_data* layerData = view->data;
 	if(!view->composite) {
 		for(int i = 0; i < layerData->layerCount; i++) {
-			fp_free_view(layerData->layers[i].view);
+			fp_view_free(layerData->layers[i].view);
 		}
 	}
 
-	fp_free_frame(layerData->frame);
+	fp_frame_free(layerData->frame);
 	free(layerData->layers);
 	free(layerData);
 

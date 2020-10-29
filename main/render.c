@@ -82,7 +82,7 @@ void fp_task_render(void *pvParameters) {
 					break;
 				case RENDER_VIEW:
 					xSemaphoreTake(params->shutdownLock, portMAX_DELAY);
-					fp_render_view(command.fargs.RENDER_VIEW.id);
+					fp_view_render(command.fargs.RENDER_VIEW.id);
 					xSemaphoreGive(params->shutdownLock);
 					break;
 			}
@@ -97,8 +97,8 @@ void fp_task_render(void *pvParameters) {
 		for(int i = 0; i < originalPendingViewRenderCount; i++) {
 			fp_pending_view_render pendingRender = fp_dequeue_render();
 			if(pendingRender.tick <= currentTick) {
-				fp_onnext_render(pendingRender.view);
-				fp_mark_view_dirty(pendingRender.view); 
+				fp_view_onnext_render(pendingRender.view);
+				fp_view_mark_dirty(pendingRender.view); 
 			}
 			else {
 				// requeue
@@ -109,10 +109,10 @@ void fp_task_render(void *pvParameters) {
 			}
 		}
 
-		fp_view* rootView = fp_get_view(params->rootView);
+		fp_view* rootView = fp_view_get(params->rootView);
 		if(rootView->dirty) {
 			xSemaphoreTake(params->shutdownLock, portMAX_DELAY);
-			fp_render_view(params->rootView);
+			fp_view_render(params->rootView);
 			xSemaphoreGive(params->shutdownLock);
 		}
 		vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(params->refresh_period_ms));

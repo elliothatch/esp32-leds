@@ -18,7 +18,7 @@ bool fp_ws2812_view_render(fp_view* view) {
 		fp_fset_rect(
 			screenData->frame,
 			0, 0,
-			fp_get_frame(fp_get_view_frame(screenData->childView))
+			fp_frame_get(fp_view_get_frame(screenData->childView))
 		);
 	}
 
@@ -42,12 +42,12 @@ fp_viewid fp_create_ws2812_view(unsigned int width, unsigned int height) {
 	screenData->frame = fp_create_frame(width, height, rgb(0,0,0));
 	screenData->childView = 0;
 
-	return fp_create_view(FP_VIEW_WS2812, false, screenData);
+	return fp_view_create(FP_VIEW_WS2812, false, screenData);
 }
 
 /* TODO: this makes some unnecessary copies and hardcodes one fixed-size LED array */
 bool fp_render_leds_ws2812(fp_frameid id) {
-	fp_frame* frame = fp_get_frame(id);
+	fp_frame* frame = fp_frame_get(id);
 
 	/* printf("render %d, %d, %d\n", id, frame->width, frame->length); */
 	/* for(int row = 0; row < frame->length / frame->width; row++) { */
@@ -66,7 +66,7 @@ bool fp_render_leds_ws2812(fp_frameid id) {
 bool fp_ws2812_view_free(fp_view* view) {
 	fp_ws2812_view_data* screenData = view->data;
 
-	fp_free_frame(screenData->frame);
+	fp_frame_free(screenData->frame);
 	free(screenData);
 
 	return true;

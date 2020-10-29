@@ -32,12 +32,12 @@ fp_viewid fp_create_anim_view(
 	animData->isPlaying = false;
 	animData->loop = false;
 
-	fp_viewid id = fp_create_view(FP_VIEW_ANIM, 0, animData);
+	fp_viewid id = fp_view_create(FP_VIEW_ANIM, 0, animData);
 
 	/* init frames */
 	for(int i = 0; i < frameCount; i++) {
-		frames[i] = fp_create_frame_view(width, height, rgb(0,0,0));
-		fp_get_view(frames[i])->parent = id;
+		frames[i] = fp_frame_view_create(width, height, rgb(0,0,0));
+		fp_view_get(frames[i])->parent = id;
 	}
 
 	return id;
@@ -69,12 +69,12 @@ fp_viewid fp_create_anim_view_composite(
 	animData->isPlaying = false;
 	animData->loop = false;
 
-	fp_viewid id = fp_create_view(FP_VIEW_ANIM, 0, animData);
+	fp_viewid id = fp_view_create(FP_VIEW_ANIM, 0, animData);
 
 	/* copy frame viewids */
 	for(int i = 0; i < frameCount; i++) {
 		newFrames[i] = frames[i];
-		fp_get_view(newFrames[i])->parent = id;
+		fp_view_get(newFrames[i])->parent = id;
 	}
 
 	return id;
@@ -82,7 +82,7 @@ fp_viewid fp_create_anim_view_composite(
 
 fp_frameid fp_anim_view_get_frame(fp_view* view) {
 	fp_anim_view_data* animData = view->data;
-	return fp_get_view_frame(animData->frames[animData->frameIndex]);
+	return fp_view_get_frame(animData->frames[animData->frameIndex]);
 }
 
 bool fp_anim_view_render(fp_view* view) {
@@ -109,20 +109,20 @@ bool fp_anim_view_onnext_render(fp_view* view) {
 
 bool fp_play_once_anim(fp_viewid animView) {
 	TickType_t currentTick = xTaskGetTickCount();
-	fp_view* view = fp_get_view(animView);
+	fp_view* view = fp_view_get(animView);
 	fp_anim_view_data* animData = view->data;
 
 	animData->isPlaying = true;
 	animData->loop = false;
 	animData->frameIndex = 0;
-	fp_mark_view_dirty(animView);
+	fp_view_mark_dirty(animView);
 	return fp_queue_render(animView, currentTick + pdMS_TO_TICKS(animData->frameratePeriodMs)); 
 }
 
 /** queues up next frame of animation */
 bool fp_play_anim(fp_viewid animView) {
 	TickType_t currentTick = xTaskGetTickCount();
-	fp_view* view = fp_get_view(animView);
+	fp_view* view = fp_view_get(animView);
 	fp_anim_view_data* animData = view->data;
 
 	animData->isPlaying = true;
@@ -131,7 +131,7 @@ bool fp_play_anim(fp_viewid animView) {
 }
 
 bool fp_pause_anim(fp_viewid animView) {
-	fp_view* view = fp_get_view(animView);
+	fp_view* view = fp_view_get(animView);
 	((fp_anim_view_data*)view->data)->isPlaying = false;
 
 	return true;
@@ -141,7 +141,7 @@ bool fp_anim_view_free(fp_view* view) {
 	fp_anim_view_data* animData = view->data;
 	if(!view->composite) {
 		for(int i = 0; i < animData->frameCount; i++) {
-			fp_free_view(animData->frames[i]);
+			fp_view_free(animData->frames[i]);
 		}
 	}
 

@@ -9,7 +9,7 @@
 
 #include "pool.h"
 
-unsigned int fp_calc_index(unsigned int x, unsigned int y, unsigned int width) {
+unsigned int fp_fcalc_index(unsigned int x, unsigned int y, unsigned int width) {
 	return y * width + x % width;
 }
 
@@ -87,14 +87,14 @@ fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color co
 	return id;
 }
 
-bool fp_free_frame(fp_frameid frame) {
+bool fp_frame_free(fp_frameid frame) {
 	return fp_pool_delete(framePool, frame);
 }
 
-fp_frame* fp_get_frame(fp_frameid id) {
+fp_frame* fp_frame_get(fp_frameid id) {
 	return fp_pool_get(framePool, id);
 	/* if(id >= framePoolCount) { */
-	/* 	printf("error: fp_get_frame: id %d too large, max id: %d\n", id, framePoolCount-1); */
+	/* 	printf("error: fp_frame_get: id %d too large, max id: %d\n", id, framePoolCount-1); */
 	/* 	return &framePool[0]; */
 	/* } */
 
@@ -105,6 +105,21 @@ unsigned int fp_frame_height(fp_frame* frame) {
 	return frame->length / frame->width;
 }
 
+bool fp_fset(
+	fp_frameid id,
+	unsigned int x,
+	unsigned int y,
+	rgb_color color
+) {
+	fp_frame* frame = fp_frame_get(id);
+	if(frame == NULL) {
+		return false;
+	}
+
+	frame->pixels[fp_fcalc_index(x, y, frame->width)] = color;
+	return true;
+}
+
 bool fp_fset_rect(
 		fp_frameid id,
 		unsigned int x,
@@ -112,15 +127,15 @@ bool fp_fset_rect(
 		fp_frame* frame
 		) {
 
-	fp_frame* targetFrame = fp_pool_get(framePool, id);
-	if(targetFrame == 0) {
+	fp_frame* targetFrame = fp_frame_get(id);
+	if(targetFrame == NULL) {
 		return false;
 	}
 
 	for(int row = 0; row < fmin(frame->length / frame->width, fmax(0, targetFrame->length / targetFrame->width - y)); row++) {
 		memcpy(
-			&targetFrame->pixels[fp_calc_index(x, y + row, targetFrame->width)],
-			&frame->pixels[fp_calc_index(0, row, frame->width)],
+			&targetFrame->pixels[fp_fcalc_index(x, y + row, targetFrame->width)],
+			&frame->pixels[fp_fcalc_index(0, row, frame->width)],
 			fmin(frame->width, fmax(0, targetFrame->width - x)) * sizeof(((fp_frame*)0)->pixels)
 		);
 	}
@@ -137,14 +152,14 @@ bool fp_ffill_rect(
 		rgb_color color
 		) {
 
-	fp_frame* frame = fp_pool_get(framePool, id);
-	if(frame == 0) {
+	fp_frame* frame = fp_frame_get(id);
+	if(frame == NULL) {
 		return false;
 	}
 
 	for(int row = 0; row < fmin(height, fmax(0,frame->length / frame->width - y)); row++) {
 		for(int col = 0; col < fmin(width, fmax(0, frame->width - x)); col++) {
-			frame->pixels[fp_calc_index(x + col, y + row, frame->width)] = color;
+			frame->pixels[fp_fcalc_index(x + col, y + row, frame->width)] = color;
 		}
 	}
 
@@ -158,20 +173,20 @@ bool fp_fset_rect_transparent(
 		unsigned int y,
 		fp_frame* frame
 		) {
-	fp_frame* targetFrame = fp_pool_get(framePool, id);
-	if(targetFrame == 0) {
+	fp_frame* targetFrame = fp_frame_get(id);
+	if(targetFrame == NULL) {
 		return false;
 	}
 
 	for(int row = 0; row < fmin(frame->length / frame->width, fmax(0, targetFrame->length / targetFrame->width - y)); row++) {
 		for(int col = 0; col < fmin(frame->width, fmax(0, targetFrame->width - x)); col++) {
-			rgb_color pixel = frame->pixels[fp_calc_index(col, row, frame->width)];
+			rgb_color pixel = frame->pixels[fp_fcalc_index(col, row, frame->width)];
 			if(pixel.fields.b == 0
 				&& pixel.fields.r == 0
 				&& pixel.fields.g == 0) {
 				continue;
 			}
-			targetFrame->pixels[fp_calc_index(x + col, y + row, targetFrame->width)] = pixel;
+			targetFrame->pixels[fp_fcalc_index(x + col, y + row, targetFrame->width)] = pixel;
 		}
 	}
 
@@ -207,20 +222,20 @@ bool fp_fblend_rect(
 	fp_frame* frame,
 	uint8_t alphaSrc
 ) {
-	fp_frame* targetFrame = fp_pool_get(framePool, id);
-	if(targetFrame == 0) {
+	fp_frame* targetFrame = fp_frame_get(id);
+	if(targetFrame == NULL) {
 		return false;
 	}
 
 	for(int row = 0; row < fmin(frame->length / frame->width, (targetFrame->length / targetFrame->width) - y); row++) {
 		for(int col = 0; col < fmin(frame->width, targetFrame->width - x); col++) {
 			rgb_color colorResult = (*blendFn)(
-					frame->pixels[fp_calc_index(col, row, frame->width)],
+					frame->pixels[fp_fcalc_index(col, row, frame->width)],
 					alphaSrc,
-					targetFrame->pixels[fp_calc_index(x + col, y + row, targetFrame->width)],
+					targetFrame->pixels[fp_fcalc_index(x + col, y + row, targetFrame->width)],
 					alphaTarget
 			);
-			targetFrame->pixels[fp_calc_index(x + col, y + row, targetFrame->width)] = colorResult;
+			targetFrame->pixels[fp_fcalc_index(x + col, y + row, targetFrame->width)] = colorResult;
 		}
 	}
 

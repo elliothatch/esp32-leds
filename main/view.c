@@ -6,7 +6,7 @@
 
 fp_view_register_data registered_views[FP_VIEW_TYPE_COUNT];
 
-bool fp_register_view_type(fp_view_type viewType, fp_view_register_data registerData) {
+bool fp_view_register_type(fp_view_type viewType, fp_view_register_data registerData) {
 	// TODO: disallow overwriting data
 	if(viewType >= FP_VIEW_TYPE_COUNT) {
 		return false;
@@ -37,14 +37,14 @@ bool fp_view_init(unsigned int capacity) {
 	return true;
 }
 
-fp_view* fp_get_view(fp_viewid id) {
+fp_view* fp_view_get(fp_viewid id) {
 	return fp_pool_get(viewPool, id);
 }
 
-fp_viewid fp_create_view(fp_view_type type, bool composite, fp_view_data* data) {
+fp_viewid fp_view_create(fp_view_type type, bool composite, fp_view_data* data) {
 	fp_viewid id = fp_pool_add(viewPool);
 	if(id == 0) {
-		printf("error: fp_create_view: failed to add view\n");
+		printf("error: fp_view_create: failed to add view\n");
 		return 0;
 	}
 
@@ -64,8 +64,8 @@ fp_viewid fp_create_view(fp_view_type type, bool composite, fp_view_data* data) 
 	return id;
 }
 
-bool fp_free_view(fp_viewid id) {
-	fp_view* view = fp_get_view(id);
+bool fp_view_free(fp_viewid id) {
+	fp_view* view = fp_view_get(id);
 	bool result = registered_views[view->type].free_view(view);
 	if(!result) {
 		return result;
@@ -75,11 +75,11 @@ bool fp_free_view(fp_viewid id) {
 }
 
 /* can trigger re-render on dirty views */
-fp_frameid fp_get_view_frame(fp_viewid id) {
-	fp_view* view = fp_get_view(id);
+fp_frameid fp_view_get_frame(fp_viewid id) {
+	fp_view* view = fp_view_get(id);
 	// TODO: handle invalid view id
 	if(view->dirty) {
-		fp_render_view(id);
+		fp_view_render(id);
 	}
 
 	if(view->type >= FP_VIEW_TYPE_COUNT) {
@@ -89,15 +89,15 @@ fp_frameid fp_get_view_frame(fp_viewid id) {
 	return registered_views[view->type].get_view_frame(view);
 }
 
-void fp_mark_view_dirty(fp_viewid id) {
-	fp_view* view = fp_get_view(id);
+void fp_view_mark_dirty(fp_viewid id) {
+	fp_view* view = fp_view_get(id);
 	view->dirty = true;
 	if(view->parent) {
-		fp_mark_view_dirty(view->parent);
+		fp_view_mark_dirty(view->parent);
 	}
 }
 
-bool fp_render_view(fp_viewid id) {
+bool fp_view_render(fp_viewid id) {
 	fp_view* view = fp_pool_get(viewPool, id);
 	if(!view) {
 		return false;
@@ -114,7 +114,7 @@ bool fp_render_view(fp_viewid id) {
 	return true;
 }
 
-bool fp_onnext_render(fp_viewid id) {
+bool fp_view_onnext_render(fp_viewid id) {
 	fp_view* view = fp_pool_get(viewPool, id);
 	if(!view) {
 		return false;

@@ -25,23 +25,23 @@ typedef struct {
 	fp_view_type type;
 	fp_viewid id;
 	fp_viewid parent;
-	bool dirty; /* render should be called on this before fp_get_frame */
+	bool dirty; /* render should be called on this before fp_frame_get */
 	bool composite; /* on free_view all child views and frames are freed */
 	fp_view_data* data;
 } fp_view;
 
 bool fp_view_init(unsigned int capacity);
 
-fp_viewid fp_create_view(fp_view_type type, bool composite, fp_view_data* data); /* used internally */
-bool fp_free_view(fp_viewid id);
+fp_viewid fp_view_create(fp_view_type type, bool composite, fp_view_data* data); /* used internally */
+bool fp_view_free(fp_viewid id);
 
-fp_view* fp_get_view(fp_viewid id);
-fp_frameid fp_get_view_frame(fp_viewid id);
-void fp_mark_view_dirty(fp_viewid id);
-bool fp_render_view(fp_viewid id);
-bool fp_onnext_render(fp_viewid id);
+fp_view* fp_view_get(fp_viewid id);
+fp_frameid fp_view_get_frame(fp_viewid id);
+void fp_view_mark_dirty(fp_viewid id);
+bool fp_view_render(fp_viewid id);
+bool fp_view_onnext_render(fp_viewid id);
 
-/* fp_view_type fp_register_view_type(render_func, get_view_frame_func, pending_view_update_func) */
+/* fp_view_type fp_view_register_type(render_func, get_view_frame_func, pending_view_update_func) */
 
 typedef struct {
 	fp_frameid (*get_view_frame) (fp_view*);
@@ -51,7 +51,7 @@ typedef struct {
 } fp_view_register_data;
 
 /* TODO: do this differently */
-bool fp_register_view_type(fp_view_type viewType, fp_view_register_data registerData);
+bool fp_view_register_type(fp_view_type viewType, fp_view_register_data registerData);
 
 /** screen view is just a buffered frame view. on render it explicitly makes a copy of its child view's primary frame*/
 

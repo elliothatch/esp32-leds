@@ -22,19 +22,25 @@ typedef unsigned int fp_frameid;
 
 bool fp_frame_init(unsigned int capacity);
 
-unsigned int fp_calc_index(unsigned int x, unsigned int y, unsigned int width);
-
 /* creates a frame with given width and height, and returns its id
  * if the frame could not be created, returns id 0, which points to the NULL frame (all fields 0) */
 fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color color);
 
-bool fp_free_frame(fp_frameid frame);
+bool fp_frame_free(fp_frameid frame);
 
 /* retrieve the frame. if there is no frame with the id, returns the NULL frame (all values 0)
  * only use if you cannot achieve what you need with the other commands */
-fp_frame* fp_get_frame(fp_frameid id);
+fp_frame* fp_frame_get(fp_frameid id);
 
 unsigned int fp_frame_height(fp_frame* frame);
+unsigned int fp_fcalc_index(unsigned int x, unsigned int y, unsigned int width);
+
+bool fp_fset(
+	fp_frameid id,
+	unsigned int x,
+	unsigned int y,
+	rgb_color color
+);
 
 bool fp_fset_rect(
 	fp_frameid id,
