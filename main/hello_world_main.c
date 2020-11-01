@@ -58,14 +58,10 @@ void init_gpio_test();
 
 typedef struct {
 	fp_viewid (*init_mode) (void**);
-	bool (*free_mode) (void**);
+	bool (*free_mode) (fp_view*, void**);
+	fp_viewid view;
 	void* data;
 } demo_mode;
-
-typedef struct {
-	fp_viewid frameView;
-} frame_view_demo_data;
-
 
 fp_viewid frame_view_demo_init(void** data) {
 	fp_viewid frameView = fp_frame_view_create(SCREEN_WIDTH, SCREEN_HEIGHT, rgb(0, 0, 0));
@@ -80,26 +76,12 @@ fp_viewid frame_view_demo_init(void** data) {
 		}
 	}
 
-	*data = malloc(sizeof(frame_view_demo_data));
-	// TODO: add error check
-
-	frame_view_demo_data* frameData = *data;
-	frameData->frameView = frameView;
-
 	return frameView;
 }
 
-bool frame_view_demo_free(void** data) {
-	frame_view_demo_data* frameData = *data;
-	fp_view_free(frameData->frameView);
-	free(*data);
+bool frame_view_demo_free(fp_view* view, void** data) {
 	return true;
 }
-
-typedef struct {
-	fp_viewid dynamicView;
-} dynamic_view_demo_data;
-
 
 bool dynamic_view_demo_render(fp_view* view) {
 	fp_dynamic_view_data* dynamicData = view->data;
@@ -154,22 +136,13 @@ fp_viewid dynamic_view_demo_init(void** data) {
 	}
 	*/
 
-	*data = malloc(sizeof(dynamic_view_demo_data));
-	// TODO: add error check
-
-	frame_view_demo_data* dynamicData = *data;
-	dynamicData->frameView = dynamicView;
-
 	return dynamicView;
 }
 
-bool dynamic_view_demo_free(void** data) {
-	dynamic_view_demo_data* dynamicData = *data;
-	fp_dynamic_view_data* viewData = fp_view_get(dynamicData->dynamicView)->data;
+bool dynamic_view_demo_free(fp_view* view, void** data) {
+	fp_dynamic_view_data* viewData = view->data;
 	TickType_t* lastDrop = viewData->data;
 	free(lastDrop);
-	fp_view_free(dynamicData->dynamicView);
-	free(*data);
 	return true;
 }
 
@@ -177,10 +150,12 @@ bool dynamic_view_demo_free(void** data) {
 demo_mode demos[] = {{
 	&frame_view_demo_init,
 	&frame_view_demo_free,
+	0,
 	NULL
 }, {
 	&dynamic_view_demo_init,
 	&dynamic_view_demo_free,
+	0,
 	NULL
 }};
 
@@ -188,7 +163,12 @@ demo_mode* currentDemo = NULL;
 
 fp_viewid play_demo(demo_mode* demo) {
 	if(currentDemo != NULL) {
-		demo->free_mode(&currentDemo->data);
+		if(demo->view != 0) {
+			if(fp_view_free(demo->view)) {
+				demo->view = 0;
+			}
+		}
+		demo->free_mode(fp_view_get(demo->view), &currentDemo->data);
 	}
 
 	fp_viewid view = demo->init_mode(&demo->data);
@@ -877,32 +857,6 @@ static void IRAM_ATTR gpio_isr_handler(void* arg) {
 	uint32_t gpio_num = (uint32_t)arg;
 	xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
 }
-
-void re_poll_test() {
-	for(;;) {
-		// update rotary encoder
-		input0_prev = input0;
-		input1_prev = input1;
-
-		input0 = !gpio_get_level(GPIO_INPUT_PIN_0);
-		input1 = !gpio_get_level(GPIO_INPUT_PIN_1);
-		if(rotary_encoder_update_state(input0, input1, input0_prev, input1_prev)) {
-			if(re_position >= 0) {
-				for(int i = 0; i < re_position; i++) {
-					printf("+");
-				}
-			}
-			else {
-				for(int i = 0; i > re_position; i--) {
-					printf("-");
-				}
-			}
-			printf("\n");
-		}
-		vTaskDelay(1);
-	}
-}
-
 
 void init_gpio_test() {
 	gpio_config_t io_conf;

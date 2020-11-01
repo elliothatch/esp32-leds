@@ -88,6 +88,9 @@ fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color co
 }
 
 bool fp_frame_free(fp_frameid frame) {
+	if(DEBUG) {
+		printf("delete frame %d\n", frame);
+	}
 	return fp_pool_delete(framePool, frame);
 }
 

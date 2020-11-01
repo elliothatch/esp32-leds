@@ -71,7 +71,12 @@ bool fp_view_free(fp_viewid id) {
 		return result;
 	}
 
+	if(DEBUG) {
+		printf("delete view %d: type: %d\n", id, view->type);
+	}
+
 	return fp_pool_delete(viewPool, id);
+
 }
 
 /* can trigger re-render on dirty views */
