@@ -149,7 +149,6 @@ bool dynamic_view_demo_free(fp_view* view, void** data) {
 	return true;
 }
 
-
 #define DEMO_COUNT 2
 demo_mode demos[] = {{
 	&frame_view_demo_init,
@@ -166,8 +165,40 @@ demo_mode demos[] = {{
 demo_mode* currentDemo = NULL;
 unsigned int demoIndex = 0;
 
-fp_viewid play_demo(fp_viewid screenView, demo_mode* demo) {
-	fp_ws2812_view_set_child(screenView, 0);
+bool demo_select_render(fp_view* view) {
+	fp_dynamic_view_data* dynamicData = view->data;
+	fp_frame* frame = fp_frame_get(dynamicData->frame);
+
+	if(dynamicData->data == false && currentDemo != NULL) {
+		fp_fset_rect(dynamicData->frame, 0, 0, fp_frame_get(fp_view_get_frame(currentDemo->view)));
+		return true;
+	}
+
+	for(int i = 0; i < SCREEN_WIDTH; i++) {
+		for(int j = 0; j < SCREEN_HEIGHT; j++) {
+			/* uint8_t value = fp_fcalc_index(i, j, frame->width) * 255 / frame->length; */
+			uint8_t value = esp_random();// % 100;
+			frame->pixels[fp_fcalc_index(i, j, frame->width)] = rgb(value, value, value);
+		}
+	}
+	return true;
+}
+
+bool demo_select_onnext_render(fp_view* view) {
+	fp_dynamic_view_data* dynamicData = view->data;
+	dynamicData->data = false; /* don't show static */
+
+	return true;
+}
+
+fp_viewid play_demo(fp_viewid selectViewId, demo_mode* demo) {
+	fp_view* selectView = fp_view_get(selectViewId);
+	fp_dynamic_view_data* dynamicData = selectView->data;
+	dynamicData->data = (void*)true;
+
+	TickType_t currentTick = xTaskGetTickCount();
+	fp_queue_render(selectViewId, currentTick + pdMS_TO_TICKS(500));
+
 
 	if(currentDemo != NULL) {
 		currentDemo->free_mode(fp_view_get(currentDemo->view), &currentDemo->data);
@@ -179,7 +210,6 @@ fp_viewid play_demo(fp_viewid screenView, demo_mode* demo) {
 	}
 
 	fp_viewid view = demo->init_mode(&demo->data);
-	fp_ws2812_view_set_child(screenView, view);
 
 	currentDemo = demo;
 	currentDemo->view = view;
@@ -189,10 +219,12 @@ fp_viewid play_demo(fp_viewid screenView, demo_mode* demo) {
 
 
 void select_demo(fp_rotary_encoder* re) {
-	fp_viewid screenView = (unsigned int)re->data;
+
+	/* return fp_queue_render(animView, currentTick + pdMS_TO_TICKS(animData->frameratePeriodMs)); */ 
+	fp_viewid selectView = (unsigned int)re->data;
 	demoIndex = abs(re->position) % DEMO_COUNT;
-	printf("play demo %d\n", demoIndex);
-	play_demo(screenView, &demos[demoIndex]);
+	printf("demo %d\n", demoIndex);
+	play_demo(selectView, &demos[demoIndex]);
 }
 
 static xQueueHandle gpio_evt_queue = NULL;
@@ -245,16 +277,20 @@ void app_main()
 	fp_view_register_type(FP_VIEW_TRANSITION, fp_transition_view_register_data);
 	fp_view_register_type(FP_VIEW_DYNAMIC, fp_dynamic_view_register_data);
 
-	fp_viewid screenViewId = fp_create_ws2812_view(8, 8);
+	fp_viewid screenViewId = fp_create_ws2812_view(SCREEN_WIDTH, SCREEN_HEIGHT);
+
+
+	fp_viewid demoSelectView = fp_dynamic_view_create(SCREEN_WIDTH, SCREEN_HEIGHT, &demo_select_render, demo_select_onnext_render, (void*)true);
+
+	fp_ws2812_view_set_child(screenViewId, demoSelectView);
 
 	gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
 
 	gpio_evt_queue = xQueueCreate(10, sizeof(fp_gpio_pin_config));
 	xTaskCreate(fp_input_task, "fp_input_task", 2048, gpio_evt_queue, 10, NULL);
 
-	fp_rotary_encoder* re = fp_rotary_encoder_init(19, 21, &select_demo, gpio_evt_queue, (void*)screenViewId);
+	fp_rotary_encoder* re = fp_rotary_encoder_init(19, 21, &select_demo, gpio_evt_queue, (void*)demoSelectView);
 	/* fp_rotary_encoder* re = fp_rotary_encoder_init(19, 21, &fp_rotary_encoder_on_position_change_printdbg, gpio_evt_queue); */
-
 
 	/* fp_viewid mainViewId = create_animation_test(); */
 	/* fp_viewid mainViewId = create_animated_layer_test(); */
@@ -266,7 +302,7 @@ void app_main()
 
 	/* bootloader_random_enable(); */
 
-	play_demo(screenViewId, &demos[0]);
+	play_demo(demoSelectView, &demos[0]);
 
 	fp_task_render_params renderParams = { 1000/60, screenViewId, ledQueue, ledShutdownLock };
 
@@ -737,168 +773,4 @@ fp_viewid create_nvs_image_test() {
 	free(fileBuffer);
 
 	return viewid;
-}
-
-/** detect a full step when the encoder has passed through all 4 states
- * and returned to the OFF state, completing a cycle.
- * negative values represent negative rotation */
-#define RE_STATE_OFF 0
-#define RE_STATE_CW_START 1
-#define RE_STATE_ON 2
-#define RE_STATE_CW_END 3
-
-/* number of ticks forward/backward from starting position */
-static int re_position = 0;
-/* sub-position of rotary encoder; used to detect a position change */
-static int re_state = RE_STATE_OFF;
-
-static bool rotary_encoder_update_state(int a, int b, int aPrev, int bPrev) {
-	/* state truth table
-	 * a b o
-	 * 0 0 0
-	 * 0 1 1
-	 * 1 0 3
-	 * 1 1 2
-	 */
-	int state = 2*a + b - a*b + a*!b;
-	int statePrev = 2*aPrev + bPrev - aPrev*bPrev + aPrev*!bPrev;
-
-	int stateDiff = state - statePrev;
-
-	if(stateDiff == -3) {
-		stateDiff = 1;
-	}
-	else if(stateDiff == 3) {
-		stateDiff = -1;
-	}
-
-	if(stateDiff == 0) {
-		return false;
-	}
-
-	/* if 2, continue in same direction as before, or default CW */
-	if(stateDiff == 2 || stateDiff == -2) {
-		stateDiff = 2*(re_state >= 0? 1: -1);
-	}
-
-	re_state += stateDiff;
-
-	/* printf("%d %d [%d %d] (%d %d) (%d %d)\n", re_state, stateDiff, statePrev, state, aPrev, bPrev, a, b); */
-
-	if(re_state > 3) {
-		re_state -= 4;
-		re_position++;
-		return true;
-	}
-	else if(re_state < -3) {
-		re_state += 4;
-		re_position--;
-		return true;
-	}
-	
-	return false;
-}
-
-static int input0_prev = 0;
-static int input1_prev = 0;
-static int input0 = 0;
-static int input1 = 0;
-
-/* static int input2 = 0; */
-
-static void gpio_handle_input_task(void* arg) {
-	uint32_t io_num;
-	for(;;) {
-		if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) {
-			/* printf("GPIO[%d] intr, val: %d\n", io_num, gpio_get_level(io_num)); */
-			/*
-			switch(io_num) {
-				case GPIO_INPUT_PIN_0:
-					input0 = gpio_get_level(io_num);
-					break;
-				case GPIO_INPUT_PIN_1:
-					input1 = gpio_get_level(io_num);
-					break;
-				case GPIO_INPUT_PIN_2:
-					input2 = gpio_get_level(io_num);
-					break;
-			}
-
-			if(io_num == GPIO_INPUT_PIN_0 && input0 == 1) {
-				if(input1 == 0) {
-					// clockwise
-					counter++;
-
-				}
-				else {
-					// counter-clockwise
-					counter--;
-				}
-				if(counter >= 0) {
-					for(int i = 0; i < counter; i++) {
-						printf("+");
-					}
-				}
-				else {
-					for(int i = 0; i > counter; i--) {
-						printf("-");
-					}
-				}
-				printf("\n");
-			}
-			*/
-
-			if(io_num == GPIO_INPUT_PIN_0 || io_num == GPIO_INPUT_PIN_1) {
-				// update rotary encoder
-				input0_prev = input0;
-				input1_prev = input1;
-
-				input0 = !gpio_get_level(GPIO_INPUT_PIN_0);
-				input1 = !gpio_get_level(GPIO_INPUT_PIN_1);
-				if(rotary_encoder_update_state(input0, input1, input0_prev, input1_prev)) {
-					printf("RE %4d: ", re_position);
-					if(re_position >= 0) {
-						for(int i = 0; i < re_position; i++) {
-							printf("+");
-						}
-					}
-					else {
-						for(int i = 0; i > re_position; i--) {
-							printf("-");
-						}
-					}
-					printf("\n");
-				}
-			}
-			else {
-				printf("GPIO[%d] intr, val: %d\n", io_num, gpio_get_level(io_num));
-			}
-		}
-	}
-}
-
-static void IRAM_ATTR gpio_isr_handler(void* arg) {
-	uint32_t gpio_num = (uint32_t)arg;
-	xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
-}
-
-void init_gpio_test() {
-	gpio_config_t io_conf;
-	io_conf.intr_type = GPIO_INTR_ANYEDGE;
-	io_conf.pin_bit_mask = GPIO_INPUT_PIN_MASK;
-	io_conf.mode = GPIO_MODE_INPUT;
-	io_conf.pull_up_en = 1;
-	io_conf.pull_down_en = 0;
-
-	gpio_config(&io_conf);
-
-	/* xTaskCreate(re_poll_test, "re_poll_test", 2048, NULL, 10, NULL); */
-	
-	gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
-	xTaskCreate(gpio_handle_input_task, "gpio_handle_input_task", 2048, NULL, 10, NULL);
-
-	gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
-	gpio_isr_handler_add(GPIO_INPUT_PIN_0, gpio_isr_handler, (void*) GPIO_INPUT_PIN_0);
-	gpio_isr_handler_add(GPIO_INPUT_PIN_1, gpio_isr_handler, (void*) GPIO_INPUT_PIN_1);
-	gpio_isr_handler_add(GPIO_INPUT_PIN_2, gpio_isr_handler, (void*) GPIO_INPUT_PIN_2);
 }
