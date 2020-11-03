@@ -14,7 +14,7 @@ typedef struct {
 	bool loop;
 } fp_anim_view_data;
 
-fp_viewid fp_create_anim_view(
+fp_viewid fp_anim_view_create(
 	unsigned int width,
 	unsigned int height,
 	unsigned int frameCount,
@@ -27,10 +27,10 @@ fp_viewid fp_create_anim_view_composite(
 );
 
 /** plays the animation through once from the beginning, then stops */
-bool fp_play_once_anim(fp_viewid animView);
+bool fp_anim_play_once(fp_viewid animView);
 /** resumes the animation at current frame and loop continuously */
-bool fp_play_anim(fp_viewid animView);
-bool fp_pause_anim(fp_viewid animView);
+bool fp_anim_play(fp_viewid animView);
+bool fp_anim_pause(fp_viewid animView);
 
 
 fp_frameid fp_anim_view_get_frame(fp_view* view);

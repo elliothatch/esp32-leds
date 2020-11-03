@@ -124,8 +124,8 @@ bool fp_transition_set(fp_viewid transitionView, unsigned int pageIndex) {
 
 	transitionData->previousPageIndex = transitionData->pageIndex;
 	transitionData->pageIndex = pageIndex % transitionData->pageCount;
-	return fp_play_once_anim(transitionData->transition.viewA)
-		&& fp_play_once_anim(transitionData->transition.viewB);
+	return fp_anim_play_once(transitionData->transition.viewA)
+		&& fp_anim_play_once(transitionData->transition.viewB);
 }
 
 bool fp_transition_next(fp_viewid transitionView) {
@@ -219,8 +219,8 @@ fp_transition fp_create_sliding_transition(unsigned int width, unsigned int heig
 	unsigned int frameCount = width + 1;
 
 	fp_transition transition = {
-		fp_create_anim_view(width, height, frameCount, frameratePeriodMs),
-		fp_create_anim_view(width, height, frameCount, frameratePeriodMs)
+		fp_anim_view_create(width, height, frameCount, frameratePeriodMs),
+		fp_anim_view_create(width, height, frameCount, frameratePeriodMs)
 	};
 
 	fp_view* transitionViewA = fp_view_get(transition.viewA);

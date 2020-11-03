@@ -149,7 +149,34 @@ bool dynamic_view_demo_free(fp_view* view, void** data) {
 	return true;
 }
 
-#define DEMO_COUNT 2
+fp_viewid animation_view_demo_init(void** data) {
+	const unsigned int frameCount = 60;
+
+	fp_viewid animViewId = fp_anim_view_create(SCREEN_WIDTH, SCREEN_HEIGHT, frameCount, 3000/frameCount);
+	fp_view* animView = fp_view_get(animViewId);
+	fp_anim_view_data* animData = animView->data;
+
+	for(int i = 0; i < frameCount; i++) {
+		for(int j = 0; j < 8; j++) {
+			fp_ffill_rect(
+				((fp_frame_view_data*)fp_view_get(animData->frames[i])->data)->frame,
+				0, j,
+				8, 1,
+				hsv_to_rgb(hsv(((255*i/frameCount)+(255*j/8))%256, 255, 25))
+			);
+		}
+	}
+
+	fp_anim_play(animViewId);
+
+	return animViewId;
+}
+
+bool animation_view_demo_free(fp_view* view, void** data) {
+	return true;
+}
+
+#define DEMO_COUNT 3
 demo_mode demos[] = {{
 	&frame_view_demo_init,
 	&frame_view_demo_free,
@@ -158,6 +185,11 @@ demo_mode demos[] = {{
 }, {
 	&dynamic_view_demo_init,
 	&dynamic_view_demo_free,
+	0,
+	NULL
+}, {
+	&animation_view_demo_init,
+	&animation_view_demo_free,
 	0,
 	NULL
 }};
@@ -169,7 +201,7 @@ bool demo_select_render(fp_view* view) {
 	fp_dynamic_view_data* dynamicData = view->data;
 	fp_frame* frame = fp_frame_get(dynamicData->frame);
 
-	if(dynamicData->data == false && currentDemo != NULL) {
+	if(dynamicData->data == false && currentDemo != NULL && currentDemo->view != 0) {
 		fp_fset_rect(dynamicData->frame, 0, 0, fp_frame_get(fp_view_get_frame(currentDemo->view)));
 		return true;
 	}
@@ -196,9 +228,7 @@ fp_viewid play_demo(fp_viewid selectViewId, demo_mode* demo) {
 	fp_dynamic_view_data* dynamicData = selectView->data;
 	dynamicData->data = (void*)true;
 
-	TickType_t currentTick = xTaskGetTickCount();
-	fp_queue_render(selectViewId, currentTick + pdMS_TO_TICKS(500));
-
+	TickType_t startTick = xTaskGetTickCount();
 
 	if(currentDemo != NULL) {
 		currentDemo->free_mode(fp_view_get(currentDemo->view), &currentDemo->data);
@@ -210,9 +240,17 @@ fp_viewid play_demo(fp_viewid selectViewId, demo_mode* demo) {
 	}
 
 	fp_viewid view = demo->init_mode(&demo->data);
+	fp_view* demoView = fp_view_get(view);
+
+	demoView->parent = selectViewId;
 
 	currentDemo = demo;
 	currentDemo->view = view;
+
+
+
+	TickType_t loadedTick = xTaskGetTickCount();
+	fp_queue_render(selectViewId, fmax(startTick + pdMS_TO_TICKS(300), loadedTick));
 
 	return view;
 }
@@ -221,10 +259,21 @@ fp_viewid play_demo(fp_viewid selectViewId, demo_mode* demo) {
 void select_demo(fp_rotary_encoder* re) {
 
 	/* return fp_queue_render(animView, currentTick + pdMS_TO_TICKS(animData->frameratePeriodMs)); */ 
-	fp_viewid selectView = (unsigned int)re->data;
+	/*
+	fp_viewid selectViewId = (unsigned int)re->data;
+	fp_view* selectView = fp_view_get(selectViewId);
+	fp_viewid screenViewId = selectView->parent;
+
+	fp_ws2812_view_data* screenViewData = fp_view_get(screenViewId)->data;
+	screenViewData->brightness = re->position / 20.0f;
+	printf("brightness %f\n", screenViewData->brightness);
+	fp_view_mark_dirty(screenViewId);
+	*/
+
+	fp_viewid selectViewId = (unsigned int)re->data;
 	demoIndex = abs(re->position) % DEMO_COUNT;
 	printf("demo %d\n", demoIndex);
-	play_demo(selectView, &demos[demoIndex]);
+	play_demo(selectViewId, &demos[demoIndex]);
 }
 
 static xQueueHandle gpio_evt_queue = NULL;
@@ -278,8 +327,6 @@ void app_main()
 	fp_view_register_type(FP_VIEW_DYNAMIC, fp_dynamic_view_register_data);
 
 	fp_viewid screenViewId = fp_create_ws2812_view(SCREEN_WIDTH, SCREEN_HEIGHT);
-
-
 	fp_viewid demoSelectView = fp_dynamic_view_create(SCREEN_WIDTH, SCREEN_HEIGHT, &demo_select_render, demo_select_onnext_render, (void*)true);
 
 	fp_ws2812_view_set_child(screenViewId, demoSelectView);
@@ -287,7 +334,7 @@ void app_main()
 	gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
 
 	gpio_evt_queue = xQueueCreate(10, sizeof(fp_gpio_pin_config));
-	xTaskCreate(fp_input_task, "fp_input_task", 2048, gpio_evt_queue, 10, NULL);
+	xTaskCreate(fp_input_task, "fp_input_task", 4096, gpio_evt_queue, 10, NULL);
 
 	fp_rotary_encoder* re = fp_rotary_encoder_init(19, 21, &select_demo, gpio_evt_queue, (void*)demoSelectView);
 	/* fp_rotary_encoder* re = fp_rotary_encoder_init(19, 21, &fp_rotary_encoder_on_position_change_printdbg, gpio_evt_queue); */
@@ -306,7 +353,8 @@ void app_main()
 
 	fp_task_render_params renderParams = { 1000/60, screenViewId, ledQueue, ledShutdownLock };
 
-	xTaskCreate(fp_task_render, "Render LED Task", 2048*4, &renderParams, 1, NULL);
+	vTaskPrioritySet(NULL, 1);
+	xTaskCreate(fp_task_render, "Render LED Task", 2048*4, &renderParams, 2, NULL);
 
 	while(true) {
 		vTaskDelay(portMAX_DELAY);
@@ -372,7 +420,7 @@ void app_main()
 fp_viewid create_animation_test(fp_viewid screenView) {
 	const unsigned int frameCount = 60;
 
-	fp_viewid animViewId = fp_create_anim_view(8, 8, frameCount, 3000/frameCount);
+	fp_viewid animViewId = fp_anim_view_create(8, 8, frameCount, 3000/frameCount);
 	fp_view* animView = fp_view_get(animViewId);
 	fp_anim_view_data* animData = animView->data;
 
@@ -387,7 +435,7 @@ fp_viewid create_animation_test(fp_viewid screenView) {
 		}
 	}
 
-	fp_play_anim(animViewId);
+	fp_anim_play(animViewId);
 
 	return animViewId;
 }
@@ -399,7 +447,7 @@ fp_viewid create_animated_layer_test(fp_viewid screenView) {
 	const unsigned int frameCount = 60;
 
 	for(int layerIndex = 0; layerIndex < layerCount - 1; layerIndex++) {
-		animViewIds[layerIndex] = fp_create_anim_view(4, 4, frameCount, 2000/frameCount);
+		animViewIds[layerIndex] = fp_anim_view_create(4, 4, frameCount, 2000/frameCount);
 		fp_view* animView = fp_view_get(animViewIds[layerIndex]);
 		fp_anim_view_data* animData = animView->data;
 
@@ -455,7 +503,7 @@ fp_viewid create_animated_layer_test(fp_viewid screenView) {
 
 	/* mask fades in and out */
 	const unsigned int maskFrameCount = 60;
-	animViewIds[4] = fp_create_anim_view(4, 4, maskFrameCount, 4000/maskFrameCount);
+	animViewIds[4] = fp_anim_view_create(4, 4, maskFrameCount, 4000/maskFrameCount);
 	fp_view* maskAnimView = fp_view_get(animViewIds[4]);
 	fp_anim_view_data* maskAnimData = maskAnimView->data;
 
@@ -479,11 +527,11 @@ fp_viewid create_animated_layer_test(fp_viewid screenView) {
 		animViewIds[4],
 	};
 
-	fp_play_anim(animViewIds[0]);
-	fp_play_anim(animViewIds[1]);
-	fp_play_anim(animViewIds[2]);
-	fp_play_anim(animViewIds[3]);
-	fp_play_anim(animViewIds[4]);
+	fp_anim_play(animViewIds[0]);
+	fp_anim_play(animViewIds[1]);
+	fp_anim_play(animViewIds[2]);
+	fp_anim_play(animViewIds[3]);
+	fp_anim_play(animViewIds[4]);
 
 
 	fp_viewid layerViewId = fp_create_layer_view_composite(8, 8, layerViews, layerCount);
@@ -673,7 +721,7 @@ fp_viewid create_animated_transition_test() {
 	const unsigned int frameCount = 60;
 
 	for(int pageIndex = 0; pageIndex < pageCount; pageIndex++) {
-		animViewIds[pageIndex] = fp_create_anim_view(8, 8, frameCount, 1000/frameCount);
+		animViewIds[pageIndex] = fp_anim_view_create(8, 8, frameCount, 1000/frameCount);
 		fp_view* animView = fp_view_get(animViewIds[pageIndex]);
 		fp_anim_view_data* animData = animView->data;
 
@@ -690,7 +738,7 @@ fp_viewid create_animated_transition_test() {
 			);
 		}
 
-		fp_play_anim(animViewIds[pageIndex]);
+		fp_anim_play(animViewIds[pageIndex]);
 	}
 
 	fp_viewid pageViews[] = {

@@ -9,6 +9,7 @@
 typedef struct {
 	fp_viewid childView;
 	fp_frameid frame;
+	float brightness;
 	/* struct led_state leds; */
 } fp_ws2812_view_data;
 

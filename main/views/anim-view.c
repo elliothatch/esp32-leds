@@ -6,7 +6,7 @@
 #include "frame-view.h"
 #include "../render.h"
 
-fp_viewid fp_create_anim_view(
+fp_viewid fp_anim_view_create(
 	unsigned int width,
 	unsigned int height,
 	unsigned int frameCount,
@@ -14,13 +14,13 @@ fp_viewid fp_create_anim_view(
 ) {
 	fp_viewid* frames = malloc(frameCount * sizeof(fp_viewid));
 	if(!frames) {
-		printf("error: fp_create_anim_view: failed to allocate memory for frames\n");
+		printf("error: fp_anim_view_create: failed to allocate memory for frames\n");
 		return 0;
 	}
 
 	fp_anim_view_data* animData = malloc(sizeof(fp_anim_view_data));
 	if(!animData) {
-		printf("error: fp_create_anim_view: failed to allocate memory for animData\n");
+		printf("error: fp_anim_view_create: failed to allocate memory for animData\n");
 		free(frames);
 		return 0;
 	}
@@ -32,7 +32,7 @@ fp_viewid fp_create_anim_view(
 	animData->isPlaying = false;
 	animData->loop = false;
 
-	fp_viewid id = fp_view_create(FP_VIEW_ANIM, 0, animData);
+	fp_viewid id = fp_view_create(FP_VIEW_ANIM, false, animData);
 
 	/* init frames */
 	for(int i = 0; i < frameCount; i++) {
@@ -51,13 +51,13 @@ fp_viewid fp_create_anim_view_composite(
 	/** copy the values from the array */
 	fp_viewid* newFrames = malloc(frameCount * sizeof(fp_viewid));
 	if(!newFrames) {
-		printf("error: fp_create_anim_view: failed to allocate memory for frames\n");
+		printf("error: fp_anim_view_create: failed to allocate memory for frames\n");
 		return 0;
 	}
 
 	fp_anim_view_data* animData = malloc(sizeof(fp_anim_view_data));
 	if(!animData) {
-		printf("error: fp_create_anim_view: failed to allocate memory for animData\n");
+		printf("error: fp_anim_view_create: failed to allocate memory for animData\n");
 		free(newFrames);
 		return 0;
 	}
@@ -69,7 +69,7 @@ fp_viewid fp_create_anim_view_composite(
 	animData->isPlaying = false;
 	animData->loop = false;
 
-	fp_viewid id = fp_view_create(FP_VIEW_ANIM, 0, animData);
+	fp_viewid id = fp_view_create(FP_VIEW_ANIM, true, animData);
 
 	/* copy frame viewids */
 	for(int i = 0; i < frameCount; i++) {
@@ -107,7 +107,7 @@ bool fp_anim_view_onnext_render(fp_view* view) {
 }
 
 
-bool fp_play_once_anim(fp_viewid animView) {
+bool fp_anim_play_once(fp_viewid animView) {
 	TickType_t currentTick = xTaskGetTickCount();
 	fp_view* view = fp_view_get(animView);
 	fp_anim_view_data* animData = view->data;
@@ -120,7 +120,7 @@ bool fp_play_once_anim(fp_viewid animView) {
 }
 
 /** queues up next frame of animation */
-bool fp_play_anim(fp_viewid animView) {
+bool fp_anim_play(fp_viewid animView) {
 	TickType_t currentTick = xTaskGetTickCount();
 	fp_view* view = fp_view_get(animView);
 	fp_anim_view_data* animData = view->data;
@@ -130,7 +130,7 @@ bool fp_play_anim(fp_viewid animView) {
 	return fp_queue_render(animView, currentTick + pdMS_TO_TICKS(animData->frameratePeriodMs)); 
 }
 
-bool fp_pause_anim(fp_viewid animView) {
+bool fp_anim_pause(fp_viewid animView) {
 	fp_view* view = fp_view_get(animView);
 	((fp_anim_view_data*)view->data)->isPlaying = false;
 

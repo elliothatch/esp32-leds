@@ -24,9 +24,9 @@ bool fp_ws2812_view_render(fp_view* view) {
 		for(int i = 0; i < frame->length && i < childFrame->length; i++) {
 			rgb_color color = childFrame->pixels[i];
 
-			frame->pixels[i].fields.r = gamma8[color.fields.r];
-			frame->pixels[i].fields.g = gamma8[color.fields.g];
-			frame->pixels[i].fields.b = gamma8[color.fields.b];
+			frame->pixels[i].fields.r = gamma8[(int)(color.fields.r * screenData->brightness)];
+			frame->pixels[i].fields.g = gamma8[(int)(color.fields.g * screenData->brightness)];
+			frame->pixels[i].fields.b = gamma8[(int)(color.fields.b * screenData->brightness)];
 		}
 
 		/*
@@ -57,6 +57,7 @@ fp_viewid fp_create_ws2812_view(unsigned int width, unsigned int height) {
 
 	screenData->frame = fp_create_frame(width, height, rgb(0,0,0));
 	screenData->childView = 0;
+	screenData->brightness = 1.0f;
 
 	return fp_view_create(FP_VIEW_WS2812, false, screenData);
 }
