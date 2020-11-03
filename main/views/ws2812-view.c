@@ -14,7 +14,7 @@ fp_frameid fp_ws2812_view_get_frame(fp_view* view) {
 
 bool fp_ws2812_view_render(fp_view* view) {
 	fp_ws2812_view_data* screenData = view->data;
-	if(screenData->childView) {
+	if(screenData->childView != 0) {
 		fp_fset_rect(
 			screenData->frame,
 			0, 0,
@@ -70,4 +70,14 @@ bool fp_ws2812_view_free(fp_view* view) {
 	free(screenData);
 
 	return true;
+}
+
+void fp_ws2812_view_set_child(fp_viewid parent, fp_viewid child) {
+	fp_view* parentView = fp_view_get(parent);
+	fp_view* childView = fp_view_get(child);
+
+	fp_ws2812_view_data* parentViewData = parentView->data;
+
+	parentViewData->childView = child;
+	childView->parent = parent;
 }

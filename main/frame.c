@@ -81,7 +81,7 @@ fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color co
 	/* ); */
 
 	if(DEBUG) {
-		printf("create frame %d: length: %d\n", id, length);
+		printf("frame: create %d (%d/%d): length: %d\n", id, framePool->count, framePool->capacity, length);
 	}
 
 	return id;
@@ -89,7 +89,7 @@ fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color co
 
 bool fp_frame_free(fp_frameid frame) {
 	if(DEBUG) {
-		printf("delete frame %d\n", frame);
+		printf("frame: delete %d (%d/%d)\n", frame, framePool->count, framePool->capacity);
 	}
 	return fp_pool_delete(framePool, frame);
 }

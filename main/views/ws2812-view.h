@@ -20,6 +20,7 @@ bool fp_ws2812_view_render(fp_view* view);
 bool fp_ws2812_view_onnext_render(fp_view* view);
 bool fp_ws2812_view_free(fp_view* view);
 
+void fp_ws2812_view_set_child(fp_viewid parent, fp_viewid child);
 bool fp_render_leds_ws2812(fp_frameid id);
 
 static const fp_view_register_data fp_ws2812_view_register_data = {

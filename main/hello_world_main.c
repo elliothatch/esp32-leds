@@ -27,6 +27,9 @@
 #include "render.h"
 #include "ppm.h"
 
+#include "input.h"
+#include "input/rotary-encoder.h"
+
 #include "view.h"
 #include "views/frame-view.h"
 #include "views/ws2812-view.h"
@@ -147,6 +150,7 @@ bool dynamic_view_demo_free(fp_view* view, void** data) {
 }
 
 
+#define DEMO_COUNT 2
 demo_mode demos[] = {{
 	&frame_view_demo_init,
 	&frame_view_demo_free,
@@ -160,21 +164,38 @@ demo_mode demos[] = {{
 }};
 
 demo_mode* currentDemo = NULL;
+unsigned int demoIndex = 0;
 
-fp_viewid play_demo(demo_mode* demo) {
+fp_viewid play_demo(fp_viewid screenView, demo_mode* demo) {
+	fp_ws2812_view_set_child(screenView, 0);
+
 	if(currentDemo != NULL) {
-		if(demo->view != 0) {
-			if(fp_view_free(demo->view)) {
-				demo->view = 0;
+		currentDemo->free_mode(fp_view_get(currentDemo->view), &currentDemo->data);
+		if(currentDemo->view != 0) {
+			if(fp_view_free(currentDemo->view)) {
+				currentDemo->view = 0;
 			}
 		}
-		demo->free_mode(fp_view_get(demo->view), &currentDemo->data);
 	}
 
 	fp_viewid view = demo->init_mode(&demo->data);
+	fp_ws2812_view_set_child(screenView, view);
+
 	currentDemo = demo;
+	currentDemo->view = view;
+
 	return view;
 }
+
+
+void select_demo(fp_rotary_encoder* re) {
+	fp_viewid screenView = (unsigned int)re->data;
+	demoIndex = abs(re->position) % DEMO_COUNT;
+	printf("play demo %d\n", demoIndex);
+	play_demo(screenView, &demos[demoIndex]);
+}
+
+static xQueueHandle gpio_evt_queue = NULL;
 
 void app_main()
 {
@@ -210,8 +231,7 @@ void app_main()
 	}
 	xSemaphoreGive(ledShutdownLock);
 
-	init_gpio_test();
-
+	/* init_gpio_test(); */
 
 	fp_frame_init(512);
 	fp_view_init(512);
@@ -227,6 +247,15 @@ void app_main()
 
 	fp_viewid screenViewId = fp_create_ws2812_view(8, 8);
 
+	gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
+
+	gpio_evt_queue = xQueueCreate(10, sizeof(fp_gpio_pin_config));
+	xTaskCreate(fp_input_task, "fp_input_task", 2048, gpio_evt_queue, 10, NULL);
+
+	fp_rotary_encoder* re = fp_rotary_encoder_init(19, 21, &select_demo, gpio_evt_queue, (void*)screenViewId);
+	/* fp_rotary_encoder* re = fp_rotary_encoder_init(19, 21, &fp_rotary_encoder_on_position_change_printdbg, gpio_evt_queue); */
+
+
 	/* fp_viewid mainViewId = create_animation_test(); */
 	/* fp_viewid mainViewId = create_animated_layer_test(); */
 	/* fp_viewid mainViewId = create_layer_alpha_test(); */
@@ -237,13 +266,7 @@ void app_main()
 
 	/* bootloader_random_enable(); */
 
-	fp_viewid mainViewId = play_demo(&demos[1]);
-
-	fp_view* screenView = fp_view_get(screenViewId);
-	fp_view* mainView = fp_view_get(mainViewId);
-
-	mainView->parent = screenViewId;
-	((fp_ws2812_view_data*)screenView->data)->childView = mainViewId;
+	play_demo(screenViewId, &demos[0]);
 
 	fp_task_render_params renderParams = { 1000/60, screenViewId, ledQueue, ledShutdownLock };
 
@@ -252,6 +275,8 @@ void app_main()
 	while(true) {
 		vTaskDelay(portMAX_DELAY);
 	}
+
+	fp_rotary_encoder_free(re);
 
 	xSemaphoreTake(ledShutdownLock, portMAX_DELAY);
     printf("Restarting now.\n");
@@ -781,7 +806,6 @@ static int input1 = 0;
 
 /* static int input2 = 0; */
 
-static xQueueHandle gpio_evt_queue = NULL;
 static void gpio_handle_input_task(void* arg) {
 	uint32_t io_num;
 	for(;;) {

@@ -58,7 +58,7 @@ fp_viewid fp_view_create(fp_view_type type, bool composite, fp_view_data* data) 
 	view->data = data;
 
 	if(DEBUG) {
-		printf("create view %d: type: %d\n", id, type);
+		printf("view: create %d (%d/%d): type: %d\n", id, viewPool->count, viewPool->capacity, type);
 	}
 
 	return id;
@@ -72,7 +72,7 @@ bool fp_view_free(fp_viewid id) {
 	}
 
 	if(DEBUG) {
-		printf("delete view %d: type: %d\n", id, view->type);
+		printf("view: delete %d (%d/%d): type: %d\n", id, viewPool->count, viewPool->capacity, view->type);
 	}
 
 	return fp_pool_delete(viewPool, id);
