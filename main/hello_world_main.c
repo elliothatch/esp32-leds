@@ -162,7 +162,7 @@ fp_viewid animation_view_demo_init(void** data) {
 				((fp_frame_view_data*)fp_view_get(animData->frames[i])->data)->frame,
 				0, j,
 				8, 1,
-				hsv_to_rgb(hsv(((255*i/frameCount)+(255*j/8))%256, 255, 25))
+				hsv_to_rgb(hsv(((255*i/frameCount)+(255*j/8))%256, 255, 150))
 			);
 		}
 	}
@@ -255,6 +255,7 @@ fp_viewid play_demo(fp_viewid selectViewId, demo_mode* demo) {
 	return view;
 }
 
+static xQueueHandle demoQueue = NULL;
 
 void select_demo(fp_rotary_encoder* re) {
 
@@ -270,10 +271,13 @@ void select_demo(fp_rotary_encoder* re) {
 	fp_view_mark_dirty(screenViewId);
 	*/
 
-	fp_viewid selectViewId = (unsigned int)re->data;
 	demoIndex = abs(re->position) % DEMO_COUNT;
 	printf("demo %d\n", demoIndex);
-	play_demo(selectViewId, &demos[demoIndex]);
+	demo_mode* demo = &demos[demoIndex];
+	/* queue the demo set on the main task, since free/init may take awhile */
+	if(xQueueSend(demoQueue, &demo, 0) != pdPASS) {
+			printf("failed to queue next demo\n");
+	}
 }
 
 static xQueueHandle gpio_evt_queue = NULL;
@@ -327,17 +331,9 @@ void app_main()
 	fp_view_register_type(FP_VIEW_DYNAMIC, fp_dynamic_view_register_data);
 
 	fp_viewid screenViewId = fp_create_ws2812_view(SCREEN_WIDTH, SCREEN_HEIGHT);
-	fp_viewid demoSelectView = fp_dynamic_view_create(SCREEN_WIDTH, SCREEN_HEIGHT, &demo_select_render, demo_select_onnext_render, (void*)true);
+	fp_viewid mainViewId = fp_dynamic_view_create(SCREEN_WIDTH, SCREEN_HEIGHT, &demo_select_render, demo_select_onnext_render, (void*)true);
 
-	fp_ws2812_view_set_child(screenViewId, demoSelectView);
-
-	gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
-
-	gpio_evt_queue = xQueueCreate(10, sizeof(fp_gpio_pin_config));
-	xTaskCreate(fp_input_task, "fp_input_task", 4096, gpio_evt_queue, 10, NULL);
-
-	fp_rotary_encoder* re = fp_rotary_encoder_init(19, 21, &select_demo, gpio_evt_queue, (void*)demoSelectView);
-	/* fp_rotary_encoder* re = fp_rotary_encoder_init(19, 21, &fp_rotary_encoder_on_position_change_printdbg, gpio_evt_queue); */
+	play_demo(mainViewId, &demos[0]);
 
 	/* fp_viewid mainViewId = create_animation_test(); */
 	/* fp_viewid mainViewId = create_animated_layer_test(); */
@@ -346,21 +342,31 @@ void app_main()
 	/* fp_viewid mainViewId = create_animated_transition_test(); */
 	/* fp_viewid mainViewId = create_nvs_image_test(); */
 
+	fp_ws2812_view_set_child(screenViewId, mainViewId);
+
+	gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
+
+	gpio_evt_queue = xQueueCreate(10, sizeof(fp_gpio_pin_config));
+	xTaskCreate(fp_input_task, "fp_input_task", 4096, gpio_evt_queue, 10, NULL);
+
+	demoQueue = xQueueCreate(10, sizeof(demo_mode*));
+
+	fp_rotary_encoder* re = fp_rotary_encoder_init(19, 21, &select_demo, gpio_evt_queue, (void*)mainViewId);
+	/* fp_rotary_encoder* re = fp_rotary_encoder_init(19, 21, &fp_rotary_encoder_on_position_change_printdbg, gpio_evt_queue); */
 
 	/* bootloader_random_enable(); */
-
-	play_demo(demoSelectView, &demos[0]);
 
 	fp_task_render_params renderParams = { 1000/60, screenViewId, ledQueue, ledShutdownLock };
 
 	vTaskPrioritySet(NULL, 1);
-	xTaskCreate(fp_task_render, "Render LED Task", 2048*4, &renderParams, 2, NULL);
+	xTaskCreate(fp_task_render, "Render LED Task", 2048*4, &renderParams, 5, NULL);
 
-	while(true) {
-		vTaskDelay(portMAX_DELAY);
+	demo_mode* demo;
+	while(xQueueReceive(demoQueue, &demo, portMAX_DELAY) == pdPASS) {
+		play_demo(mainViewId, demo);
 	}
 
-	fp_rotary_encoder_free(re);
+	/* fp_rotary_encoder_free(re); */
 
 	xSemaphoreTake(ledShutdownLock, portMAX_DELAY);
     printf("Restarting now.\n");
@@ -430,7 +436,7 @@ fp_viewid create_animation_test(fp_viewid screenView) {
 				((fp_frame_view_data*)fp_view_get(animData->frames[i])->data)->frame,
 				0, j,
 				8, 1,
-				hsv_to_rgb(hsv(((255*i/frameCount)+(255*j/8))%256, 255, 25))
+				hsv_to_rgb(hsv(((255*i/frameCount)+(255*j/8))%256, 255, 255))
 			);
 		}
 	}
