@@ -3,6 +3,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include <string.h>
+#include <errno.h>
 
 /** returns pointer to the next non-comment char.
  * if there is a comment at the character, scans through until it finds a new line '\n' or hits the end of the string (indicated by "end"), then returns a pointer to the next char */
@@ -64,6 +65,28 @@ fp_frameid fp_ppm_create_frame(char* bytes, size_t length) {
 	for(int i = 0; i < image.width * image.height; i++) {
 		frame->pixels[i] = rgb(image.pixels[i].r, image.pixels[i].g, image.pixels[i].b);
 	}
+
+	return frameid;
+}
+
+fp_frameid fp_ppm_load_image(char* filepath) {
+	FILE* file = fopen(filepath, "rb");
+	if(!file) {
+		printf("fp_ppm_load_image: error opening file (%s)\n", strerror(errno));
+		return 0;
+	}
+
+	fseek(file, 0, SEEK_END);
+	size_t fileSize = ftell(file);
+	fseek(file, 0, SEEK_SET);
+
+	char* fileBuffer = malloc(fileSize + 1);
+	fread(fileBuffer, 1, fileSize, file);
+	fclose(file);
+
+	fp_frameid frameid = fp_ppm_create_frame(fileBuffer, fileSize);
+
+	free(fileBuffer);
 
 	return frameid;
 }

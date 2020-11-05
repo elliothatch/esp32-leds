@@ -119,6 +119,7 @@ bool fp_transition_loop(fp_viewid transitionView, bool reverse) {
 }
 
 bool fp_transition_set(fp_viewid transitionView, unsigned int pageIndex) {
+	// TODO: support non-anim_view transitions (dynamic view)
 	fp_view* view = fp_view_get(transitionView);
 	fp_transition_view_data* transitionData = view->data;
 

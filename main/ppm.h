@@ -23,9 +23,11 @@ typedef struct {
 } fp_ppm_image;
 
 fp_ppm_image fp_ppm_parse(char* bytes, size_t length);
+/** allocate a frame and fill it with data parsed from ppm */
 fp_frameid fp_ppm_create_frame(char* bytes, size_t length);
 
-/* fp_ppm_image fp_create_image_frame */
+/** load the file from the filesystem and parse the data into a new frame */
+fp_frameid fp_ppm_load_image(char* filepath);
 
 
 #endif /* PPM_H */
