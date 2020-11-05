@@ -67,6 +67,8 @@ typedef struct {
 	SemaphoreHandle_t shutdownLock;
 } fp_task_render_params;
 
+void fp_queue_reset();
+
 bool fp_queue_render(fp_viewid view, TickType_t tick);
 fp_pending_view_render fp_dequeue_render();
 

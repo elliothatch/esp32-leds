@@ -2,6 +2,8 @@
 #define POOL_H
 
 #include <stdbool.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 /**
  * fp_pool
@@ -16,15 +18,17 @@ typedef struct {
 } fp_pool_element;
 
 typedef struct {
-	unsigned int elementSize;
 	unsigned int capacity;
-	void* elements;
+	unsigned int elementSize;
+	SemaphoreHandle_t poolLock;
 
+	void* elements;
 	unsigned int count;
 	fp_pool_id nextId; /* the smallest known available id. */
 } fp_pool;
 
-fp_pool* fp_pool_init(unsigned int capacity, unsigned int elementSize);
+fp_pool* fp_pool_init(unsigned int capacity, unsigned int elementSize, bool useSempahore);
+
 bool fp_pool_free(fp_pool* pool);
 
 /** retrieve element. returns 0 if the element does not exist. element with id 0 always exists */

@@ -11,6 +11,11 @@ unsigned int pendingViewRenderCount = 0;
 unsigned int pendingViewRenderIndex = 0;
 fp_pending_view_render pendingViewRenderPool[FP_PENDING_VIEW_RENDER_COUNT];
 
+void fp_queue_reset() {
+	pendingViewRenderCount = 0;
+	pendingViewRenderIndex = 0;
+}
+
 bool fp_queue_render(fp_viewid view, TickType_t tick) {
 	if(pendingViewRenderCount >= FP_PENDING_VIEW_RENDER_COUNT) {
 		printf("error: fp_queue_render: pending render pool full. limit: %d\n", FP_PENDING_VIEW_RENDER_COUNT);

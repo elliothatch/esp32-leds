@@ -162,7 +162,7 @@ fp_viewid animation_view_demo_init(void** data) {
 				((fp_frame_view_data*)fp_view_get(animData->frames[i])->data)->frame,
 				0, j,
 				8, 1,
-				hsv_to_rgb(hsv(((255*i/frameCount)+(255*j/8))%256, 255, 150))
+				hsv_to_rgb(hsv(((255*i/frameCount)+(255*j/8))%256, 255, 255))
 			);
 		}
 	}
@@ -242,32 +242,7 @@ void draw_arc_filled(fp_frameid id, int centerX, int centerY, int radius, float 
 	}
 }
 
-fp_viewid animated_layer_view_demo_init(void** data) {
-	/*
-	fp_viewid frameViews[] = {
-		fp_frame_view_create(8, 8, rgb(0, 0, 0)),
-		fp_frame_view_create(8, 8, rgb(0, 0, 0)),
-		fp_frame_view_create(8, 8, rgb(0, 0, 0)),
-		fp_frame_view_create(8, 8, rgb(0, 0, 0)),
-		fp_frame_view_create(8, 8, rgb(0, 0, 0)),
-	};
-	*/
-
-	/* fp_viewid frameViewId = fp_frame_view_create(8, 8, rgb(0, 0, 0)); */
-	/* fp_view* frameView = fp_view_get(frameViewId); */
-	/* fp_frame_view_data* frameData = frameView->data; */
-	/* draw_arc_filled(frameData->frame, 3, 3, 3, 0, 2.0*M_PI, rgb(255, 0, 0)); */
-
-	/* draw_arc_filled(frameData->frame, 4, 4, 3, 0, 2.0*M_PI/3.0, rgb(255, 0, 0)); */
-	/* draw_arc_filled(frameData->frame, 4, 4, 3, 2.0*M_PI/3.0, 2.0*2.0*M_PI/3.0, rgb(0, 255, 0)); */
-	/* draw_arc_filled(frameData->frame, 4, 4, 3, 2.0*2.0*M_PI/3.0, 2.0*M_PI, rgb(0, 0, 255)); */
-	
-	/* draw_arc_filled(fp_view_get_frame(frameViews[0]), 3, 3, 1, 0, 2.0*M_PI/3.0, rgb(255, 0, 0)); */
-	/* draw_arc_filled(fp_view_get_frame(frameViews[1]), 3, 3, 2, 0, 2.0*M_PI/3.0, rgb(255, 0, 0)); */
-	/* draw_arc_filled(fp_view_get_frame(frameViews[2]), 3, 3, 3, 0, 2.0*M_PI/3.0, rgb(255, 0, 0)); */
-	/* draw_arc_filled(fp_view_get_frame(frameViews[3]), 3, 3, 4, 0, 2.0*M_PI/3.0, rgb(255, 0, 0)); */
-	/* draw_arc_filled(fp_view_get_frame(frameViews[4]), 3, 3, 5, 0, 2.0*M_PI/3.0, rgb(255, 0, 0)); */
-
+fp_viewid spinning_ball_demo_init(void** data) {
 	rgb_color colors[] = {
 		rgb(255, 0, 0),
 		rgb(0, 255, 0),
@@ -276,16 +251,6 @@ fp_viewid animated_layer_view_demo_init(void** data) {
 		rgb(255, 0, 255),
 	};
 	float angle = 2.0*M_PI/5.0;
-
-	/*
-	for(int i = 0; i < 5; i++) {
-		for(int j = 0; j < 5; j++) {
-			draw_arc_filled(fp_view_get_frame(frameViews[i]), 3, 3, 4, j*angle + i*0.2f, (j+1)*angle + i*0.2f, colors[j]);
-		}
-	}
-
-	fp_viewid animViewId = fp_anim_view_create_composite(frameViews, 5, 700);
-	*/
 
 	unsigned int frameCount = 30;
 	fp_viewid animViewId = fp_anim_view_create(8, 8, frameCount, 1000/30);
@@ -332,39 +297,140 @@ fp_viewid animated_layer_view_demo_init(void** data) {
 
 	fp_anim_play(animViewId);
 	return layerViewId;
-
-	/*
-	fp_viewid spinAnimationViewId = fp_anim_view_create(SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1,
-	fp_viewid layerViewId = fp_layer_view_create(SCREEN_WIDTH, SCREEN_HEIGHT, 6, 6, 3);
-
-	fp_view* layerView = fp_view_get(layerViewId);
-
-	fp_layer_view_data* layerData = layerView->data;
-
-	layerData->layers[0].blendMode = FP_BLEND_ADD;
-	layerData->layers[0].offsetX = 1;
-	layerData->layers[0].offsetY = 0;
-	fp_ffill_rect(fp_view_get_frame(layerData->layers[0].view), 0, 0, 6, 5, rgb(255, 0, 0));
-
-	layerData->layers[1].blendMode = FP_BLEND_ADD;
-	layerData->layers[1].offsetX = 0;
-	layerData->layers[1].offsetY = 3;
-	fp_ffill_rect(fp_view_get_frame(layerData->layers[1].view), 0, 0, 5, 4, rgb(0, 255, 0));
-
-	layerData->layers[2].blendMode = FP_BLEND_ADD;
-	layerData->layers[2].offsetX = 3;
-	layerData->layers[2].offsetY = 3;
-	fp_ffill_rect(fp_view_get_frame(layerData->layers[2].view), 0, 0, 5, 4, rgb(0, 0, 255));
-
-	return layerViewId;
-	*/
 }
 
-bool animated_layer_view_demo_free(fp_view* view, void** data) {
+bool spinning_ball_demo_free(fp_view* view, void** data) {
+	fp_layer_view_data* layerData = view->data;
+	for(int i = 0; i < layerData->layerCount; i++) {
+		fp_view_free(layerData->layers[i].view);
+	}
 	return true;
 }
 
-#define DEMO_COUNT 5
+fp_viewid animated_layer_view_demo_init(void** data) {
+	const unsigned int layerCount = 5;
+
+	fp_viewid animViewIds[layerCount];
+	const unsigned int frameCount = 60;
+
+	for(int layerIndex = 0; layerIndex < layerCount - 1; layerIndex++) {
+		animViewIds[layerIndex] = fp_anim_view_create(4, 4, frameCount, 2000/frameCount);
+		fp_view* animView = fp_view_get(animViewIds[layerIndex]);
+		fp_anim_view_data* animData = animView->data;
+
+		for(int i = 0; i < frameCount; i++) {
+			for(int j = 0; j < 4; j++) {
+				int hueOffset = 0;
+				if(layerIndex == 1) {
+					hueOffset = 1;
+				}
+				if(layerIndex == 2) {
+					hueOffset = 1;
+				}
+				if(layerIndex == 3) {
+					hueOffset = 2;
+				}
+				if(layerIndex == 0 || layerIndex == 3) {
+					fp_ffill_rect(
+						fp_view_get_frame(animData->frames[((layerIndex+1) % 2)*(frameCount - 1 - 2*i) + i]),
+						0, j,
+						4, 1,
+						hsv_to_rgb(hsv(
+							(
+								 255 * hueOffset / (layerCount - 1)
+								+ (255*i/frameCount + 255*j/frameCount)
+							)% 256,
+							/* 255 * layerIndex / layerCount */
+							/* + (((255*i/frameCount + 255*j/4) % 256) */
+							/*   / layerCount), */
+							255,
+							255))
+					);
+				}
+				else {
+					fp_ffill_rect(
+						fp_view_get_frame(animData->frames[((layerIndex+1) % 2)*(frameCount - 1 - 2*i) + i]),
+						j, 0,
+						1, 4,
+						hsv_to_rgb(hsv(
+							(
+								 255 * hueOffset / (layerCount - 1)
+								+ (255*i/frameCount + 255*j/frameCount)
+							)% 256,
+							/* 255 * layerIndex / layerCount */
+							/* + (((255*i/frameCount + 255*j/4) % 256) */
+							/*   / layerCount), */
+							255,
+							255))
+					);
+				}
+			}
+		}
+	}
+
+	/* mask fades in and out */
+	const unsigned int maskFrameCount = 60;
+	animViewIds[4] = fp_anim_view_create(4, 4, maskFrameCount, 4000/maskFrameCount);
+	fp_view* maskAnimView = fp_view_get(animViewIds[4]);
+	fp_anim_view_data* maskAnimData = maskAnimView->data;
+
+	for(int i = 0; i < maskFrameCount; i++) {
+		unsigned int brightness = 255*abs(i - (int)maskFrameCount/2)/(maskFrameCount/2);
+		fp_ffill_rect(
+			fp_view_get_frame(maskAnimData->frames[i]),
+			0, 0,
+			4, 4,
+			rgb(brightness, brightness, brightness)
+		);
+	}
+
+
+
+	fp_viewid layerViews[] = {
+		animViewIds[0],
+		animViewIds[1],
+		animViewIds[2],
+		animViewIds[3],
+		animViewIds[4],
+	};
+
+	fp_anim_play(animViewIds[0]);
+	fp_anim_play(animViewIds[1]);
+	fp_anim_play(animViewIds[2]);
+	fp_anim_play(animViewIds[3]);
+	fp_anim_play(animViewIds[4]);
+
+
+	fp_viewid layerViewId = fp_layer_view_create_composite(8, 8, layerViews, layerCount);
+
+	fp_view* layerView = fp_view_get(layerViewId);
+	fp_layer_view_data* layerData = layerView->data;
+
+	for(int i = 0; i < layerCount; i++) {
+		fp_layer* layer = &layerData->layers[i];
+		if(i != layerCount - 1) {
+			layer->offsetX = 4 * (i % 2);
+			layer->offsetY = 4 * (i / 2);
+		}
+		else {
+			layer->offsetX = 2;
+			layer->offsetY = 2;
+			layer->blendMode = FP_BLEND_ADD;
+		}
+	}
+
+	return layerViewId;
+
+}
+
+bool animated_layer_view_demo_free(fp_view* view, void** data) {
+	fp_layer_view_data* layerData = view->data;
+	for(int i = 0; i < layerData->layerCount; i++) {
+		fp_view_free(layerData->layers[i].view);
+	}
+	return true;
+}
+
 demo_mode demos[] = {{
 	&frame_view_demo_init,
 	&frame_view_demo_free,
@@ -386,11 +452,18 @@ demo_mode demos[] = {{
 	0,
 	NULL
 }, {
+	&spinning_ball_demo_init,
+	&spinning_ball_demo_free,
+	0,
+	NULL
+}, {
 	&animated_layer_view_demo_init,
 	&animated_layer_view_demo_free,
 	0,
 	NULL
 }};
+
+const unsigned int DEMO_COUNT = sizeof(demos) / sizeof(demo_mode);
 
 demo_mode* currentDemo = NULL;
 unsigned int demoIndex = 0;
@@ -404,10 +477,11 @@ bool demo_select_render(fp_view* view) {
 		return true;
 	}
 
+	/* draw static */
 	for(int i = 0; i < SCREEN_WIDTH; i++) {
 		for(int j = 0; j < SCREEN_HEIGHT; j++) {
 			/* uint8_t value = fp_fcalc_index(i, j, frame->width) * 255 / frame->length; */
-			uint8_t value = esp_random();// % 100;
+			uint8_t value = gamma8[(uint8_t)esp_random()];// % 100;
 			frame->pixels[fp_fcalc_index(i, j, frame->width)] = rgb(value, value, value);
 		}
 	}
@@ -421,18 +495,33 @@ bool demo_select_onnext_render(fp_view* view) {
 	return true;
 }
 
+SemaphoreHandle_t ledRenderLock = NULL;
+
 fp_viewid play_demo(fp_viewid selectViewId, demo_mode* demo) {
 	fp_view* selectView = fp_view_get(selectViewId);
 	fp_dynamic_view_data* dynamicData = selectView->data;
 	dynamicData->data = (void*)true;
 
+
 	TickType_t startTick = xTaskGetTickCount();
 
 	if(currentDemo != NULL) {
-		currentDemo->free_mode(fp_view_get(currentDemo->view), &currentDemo->data);
-		if(currentDemo->view != 0) {
-			if(fp_view_free(currentDemo->view)) {
-				currentDemo->view = 0;
+		xSemaphoreTake(ledRenderLock, portMAX_DELAY);
+
+		/* reset any pending renders initialized by the previous demo */
+		fp_queue_reset();
+
+		demo_mode* lastDemo = currentDemo;
+		/* clear current demo to prevent trying to render from it while it's freeing */
+		currentDemo = NULL;
+
+		xSemaphoreGive(ledRenderLock);
+		/* the last render should be finished, so we can free memory now that the current demo is cleared */
+
+		lastDemo->free_mode(fp_view_get(lastDemo->view), &lastDemo->data);
+		if(lastDemo->view != 0) {
+			if(fp_view_free(lastDemo->view)) {
+				lastDemo->view = 0;
 			}
 		}
 	}
@@ -469,16 +558,16 @@ void select_demo(fp_rotary_encoder* re) {
 	fp_view_mark_dirty(screenViewId);
 	*/
 
+	unsigned int index;
 	if(re->position < 0) {
-		demoIndex = DEMO_COUNT - ((-re->position) % DEMO_COUNT) ;
+		index = DEMO_COUNT - ((-re->position) % DEMO_COUNT) ;
 	}
 	else {
-		demoIndex = abs(re->position) % DEMO_COUNT;
+		index = abs(re->position) % DEMO_COUNT;
 	}
-	printf("demo %d\n", demoIndex);
-	demo_mode* demo = &demos[demoIndex];
+
 	/* queue the demo set on the main task, since free/init may take awhile */
-	if(xQueueSend(demoQueue, &demo, 0) != pdPASS) {
+	if(xQueueSend(demoQueue, &index, 0) != pdPASS) {
 			printf("failed to queue next demo\n");
 	}
 }
@@ -513,11 +602,12 @@ void app_main()
 		printf("Failed to allocate queue for led render task\n");
 	}
 
-	SemaphoreHandle_t ledShutdownLock = xSemaphoreCreateBinary();
-	if(!ledShutdownLock) {
-		printf("Failed to create semaphore ledShutdownLock\n");
+	ledRenderLock = xSemaphoreCreateBinary();
+
+	if(!ledRenderLock) {
+		printf("Failed to create semaphore ledRenderLock\n");
 	}
-	xSemaphoreGive(ledShutdownLock);
+	xSemaphoreGive(ledRenderLock);
 
 	/* init_gpio_test(); */
 
@@ -552,26 +642,34 @@ void app_main()
 	gpio_evt_queue = xQueueCreate(10, sizeof(fp_gpio_pin_config));
 	xTaskCreate(fp_input_task, "fp_input_task", 4096, gpio_evt_queue, 10, NULL);
 
-	demoQueue = xQueueCreate(10, sizeof(demo_mode*));
+	demoQueue = xQueueCreate(10, sizeof(demoIndex));
 
 	fp_rotary_encoder* re = fp_rotary_encoder_init(19, 21, &select_demo, gpio_evt_queue, (void*)mainViewId);
 	/* fp_rotary_encoder* re = fp_rotary_encoder_init(19, 21, &fp_rotary_encoder_on_position_change_printdbg, gpio_evt_queue); */
 
 	/* bootloader_random_enable(); */
 
-	fp_task_render_params renderParams = { 1000/60, screenViewId, ledQueue, ledShutdownLock };
+	fp_task_render_params renderParams = { 1000/60, screenViewId, ledQueue, ledRenderLock };
 
 	vTaskPrioritySet(NULL, 1);
 	xTaskCreate(fp_task_render, "Render LED Task", 2048*4, &renderParams, 5, NULL);
 
-	demo_mode* demo;
-	while(xQueueReceive(demoQueue, &demo, portMAX_DELAY) == pdPASS) {
+	unsigned int selecteDemoIndex;
+	while(xQueueReceive(demoQueue, &selecteDemoIndex, portMAX_DELAY) == pdPASS) {
+		if(uxQueueMessagesWaiting(demoQueue) != 0) {
+			// we've already selected a new demo, skip this one
+			continue;
+		}
+
+		demoIndex = selecteDemoIndex;
+		printf("demo %d\n", demoIndex);
+		demo_mode* demo = &demos[demoIndex];
 		play_demo(mainViewId, demo);
 	}
 
 	/* fp_rotary_encoder_free(re); */
 
-	xSemaphoreTake(ledShutdownLock, portMAX_DELAY);
+	xSemaphoreTake(ledRenderLock, portMAX_DELAY);
     printf("Restarting now.\n");
     fflush(stdout);
     esp_restart();

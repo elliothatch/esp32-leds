@@ -8,6 +8,7 @@
 #include "freertos/task.h"
 
 #include "pool.h"
+#include "global.h"
 
 unsigned int fp_fcalc_index(unsigned int x, unsigned int y, unsigned int width) {
 	return y * width + x % width;
@@ -17,7 +18,7 @@ fp_pool* framePool = NULL;
 fp_frame* zeroFrame;
 
 bool fp_frame_init(unsigned int capacity) {
-	framePool = fp_pool_init(capacity, sizeof(fp_frame));
+	framePool = fp_pool_init(capacity, sizeof(fp_frame), true);
 	zeroFrame = fp_pool_get(framePool, 0);
 	zeroFrame->length = 0;
 	zeroFrame->width = 0;
@@ -56,42 +57,29 @@ fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color co
 	frame->width = width;
 	frame->pixels = pixels;
 
-	/*
-	if(!createFrameLock) {
-		createFrameLock = xSemaphoreCreateBinary();
-		if(!createFrameLock) {
-			printf("error: fp_create_frame: failed to create semaphore\n");
-		}
-		xSemaphoreGive(createFrameLock);
-	}
-
-	xSemaphoreTake(createFrameLock, portMAX_DELAY);
-	fp_frameid id = framePoolCount++;
-	xSemaphoreGive(createFrameLock);
-
-	framePool[id].length = length;
-	framePool[id].width = width;
-	framePool[id].pixels = pixels;
-	*/
-
-	/* printf("create frame: %d %d %d\n", */ 
-	/* 	id, */
-	/* 	framePool[id].length, */
-	/* 	framePool[id].width */
-	/* ); */
-
-	if(DEBUG) {
+#ifdef DEBUG
 		printf("frame: create %d (%d/%d): length: %d\n", id, framePool->count, framePool->capacity, length);
-	}
+#endif
 
 	return id;
 }
 
-bool fp_frame_free(fp_frameid frame) {
-	if(DEBUG) {
-		printf("frame: delete %d (%d/%d)\n", frame, framePool->count, framePool->capacity);
+bool fp_frame_free(fp_frameid id) {
+	if(id == 0) {
+		return false;
 	}
-	return fp_pool_delete(framePool, frame);
+
+	fp_frame* frame = fp_pool_get(framePool, id);
+	if(frame == NULL) {
+		return false;
+	}
+
+#ifdef DEBUG
+		printf("frame: delete %d (%d/%d)\n", id, framePool->count, framePool->capacity);
+#endif
+
+	free(frame->pixels);
+	return fp_pool_delete(framePool, id);
 }
 
 fp_frame* fp_frame_get(fp_frameid id) {
@@ -120,7 +108,7 @@ bool fp_fset(
 	}
 
 	unsigned int index = fp_fcalc_index(x, y, frame->width);
-	if(index < 0 || index >= frame->length) {
+	if(index >= frame->length) {
 		return false;
 	}
 

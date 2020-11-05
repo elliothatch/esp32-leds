@@ -5,8 +5,6 @@
 
 #include "color.h"
 
-#define DEBUG true
-
 /* fp: fresh pixel */
 
 /* A frame is buffer storing color information for a 2D frame. */

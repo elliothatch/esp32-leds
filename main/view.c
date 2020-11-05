@@ -3,6 +3,7 @@
 #include "freertos/FreeRTOS.h"
 
 #include "pool.h"
+#include "global.h"
 
 fp_view_register_data registered_views[FP_VIEW_TYPE_COUNT];
 
@@ -24,7 +25,7 @@ fp_pool* viewPool = NULL;
 fp_view* zeroView;
 
 bool fp_view_init(unsigned int capacity) {
-	viewPool = fp_pool_init(capacity, sizeof(fp_view));
+	viewPool = fp_pool_init(capacity, sizeof(fp_view), true);
 	zeroView = fp_pool_get(viewPool, 0);
 
 	zeroView->type = FP_VIEW_FRAME;
@@ -57,23 +58,30 @@ fp_viewid fp_view_create(fp_view_type type, bool composite, fp_view_data* data) 
 	view->composite = composite;
 	view->data = data;
 
-	if(DEBUG) {
+#ifdef DEBUG
 		printf("view: create %d (%d/%d): type: %d\n", id, viewPool->count, viewPool->capacity, type);
-	}
+#endif
 
 	return id;
 }
 
 bool fp_view_free(fp_viewid id) {
+	if(id == 0) {
+		return false;
+	}
+
 	fp_view* view = fp_view_get(id);
+	if(view == NULL) {
+		return false;
+	}
 	bool result = registered_views[view->type].free_view(view);
 	if(!result) {
 		return result;
 	}
 
-	if(DEBUG) {
-		printf("view: delete %d (%d/%d): type: %d\n", id, viewPool->count, viewPool->capacity, view->type);
-	}
+#ifdef DEBUG
+	printf("view: delete %d (%d/%d): type: %d\n", id, viewPool->count, viewPool->capacity, view->type);
+#endif
 
 	return fp_pool_delete(viewPool, id);
 

@@ -1,7 +1,5 @@
 #include "pool.h"
 
-#include "freertos/FreeRTOS.h"
-
 /**
  * do I have to worry about alignment?
  * */
@@ -10,7 +8,7 @@ fp_pool_element* fp_pool_get_element(fp_pool* pool, fp_pool_id id) {
 	return (fp_pool_element*)((char*)pool->elements + (sizeof(fp_pool_element) + pool->elementSize)*id);
 }
 
-fp_pool* fp_pool_init(unsigned int capacity, unsigned int elementSize) {
+fp_pool* fp_pool_init(unsigned int capacity, unsigned int elementSize, bool useSempahore) {
 	fp_pool* pool = malloc(sizeof(fp_pool));
 	if(!pool) {
 		printf("error: fp_pool_init: failed to allocate memory for pool\n");
@@ -23,6 +21,19 @@ fp_pool* fp_pool_init(unsigned int capacity, unsigned int elementSize) {
 		printf("error: fp_pool_init: failed to allocate memory for %ud elements (size %ud)\n", capacity, elementSize);
 		free(pool);
 		return NULL;
+	}
+
+	if(useSempahore) {
+		pool->poolLock = xSemaphoreCreateBinary();
+		if(pool->poolLock == NULL) {
+			printf("error: fp_pool_init: failed to create semaphore\n");
+		}
+		else {
+			xSemaphoreGive(pool->poolLock);
+		}
+	}
+	else {
+		pool->poolLock = NULL;
 	}
 
 	pool->elementSize = elementSize;
@@ -57,6 +68,10 @@ fp_pool_id fp_pool_add(fp_pool* pool) {
 		return 0;
 	}
 
+	if(pool->poolLock) {
+		xSemaphoreTake(pool->poolLock, portMAX_DELAY);
+	}
+
 	fp_pool_id id = pool->nextId;
 	if(id >= pool->capacity) {
 		id = 1;
@@ -82,6 +97,11 @@ fp_pool_id fp_pool_add(fp_pool* pool) {
 	element->exists = true;
 	pool->count++;
 	pool->nextId = id+1;
+
+	if(pool->poolLock) {
+		xSemaphoreGive(pool->poolLock);
+	}
+
 	return id;
 }
 
@@ -90,12 +110,20 @@ bool fp_pool_delete(fp_pool* pool, fp_pool_id id) {
 		return false;
 	}
 
+	if(pool->poolLock) {
+		xSemaphoreTake(pool->poolLock, portMAX_DELAY);
+	}
+
 	fp_pool_element* element = fp_pool_get_element(pool, id);
 
 	element->exists = false;
 	pool->count--;
 	if(id < pool->nextId) {
 		pool->nextId = id;
+	}
+
+	if(pool->poolLock) {
+		xSemaphoreGive(pool->poolLock);
 	}
 
 	return true;

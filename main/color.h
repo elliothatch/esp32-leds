@@ -48,4 +48,8 @@ rgb_color rgb_multiplyb(rgb_color a, uint8_t aAlpha, rgb_color b, uint8_t bAlpha
 
 rgb_color rgb_alpha(rgb_color a, uint8_t aAlpha, rgb_color b, uint8_t bAlpha);
 
+/** gamma correction lookup table */
+extern const uint8_t gamma8[];
+
+
 #endif /* COLOR_H */
