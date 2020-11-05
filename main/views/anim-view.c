@@ -43,7 +43,7 @@ fp_viewid fp_anim_view_create(
 	return id;
 }
 
-fp_viewid fp_create_anim_view_composite(
+fp_viewid fp_anim_view_create_composite(
 	fp_viewid* frames,
 	unsigned int frameCount,
 	unsigned int frameratePeriodMs

@@ -10,7 +10,7 @@
  * @param layerWidth - width of created frames
  * @param layerHeight - height of created frames
  */
-fp_viewid fp_create_layer_view(
+fp_viewid fp_layer_view_create(
 	unsigned int width,
 	unsigned int height,
 	unsigned int layerWidth,
@@ -19,13 +19,13 @@ fp_viewid fp_create_layer_view(
 ) {
 	fp_layer* layers = malloc(layerCount * sizeof(fp_layer));
 	if(!layers) {
-		printf("error: fp_create_layer_view: failed to allocate memory for layers\n");
+		printf("error: fp_layer_view_create: failed to allocate memory for layers\n");
 		return 0;
 	}
 
 	fp_layer_view_data* layerData = malloc(sizeof(fp_layer_view_data));
 	if(!layerData) {
-		printf("error: fp_create_layer_view: failed to allocate memory for layerData\n");
+		printf("error: fp_layer_view_create: failed to allocate memory for layerData\n");
 		free(layers);
 		return 0;
 	}
@@ -55,7 +55,7 @@ fp_viewid fp_create_layer_view(
 	return id;
 }
 
-fp_viewid fp_create_layer_view_composite(
+fp_viewid fp_layer_view_create_composite(
 	unsigned int width,
 	unsigned int height,
 	fp_viewid* layers,
@@ -63,13 +63,13 @@ fp_viewid fp_create_layer_view_composite(
 ) {
 	fp_layer* newLayers = malloc(layerCount * sizeof(fp_layer));
 	if(!newLayers) {
-		printf("error: fp_create_layer_view: failed to allocate memory for layers\n");
+		printf("error: fp_layer_view_create: failed to allocate memory for layers\n");
 		return 0;
 	}
 
 	fp_layer_view_data* layerData = malloc(sizeof(fp_layer_view_data));
 	if(!layerData) {
-		printf("error: fp_create_layer_view: failed to allocate memory for layerData\n");
+		printf("error: fp_layer_view_create: failed to allocate memory for layerData\n");
 		free(newLayers);
 		return 0;
 	}

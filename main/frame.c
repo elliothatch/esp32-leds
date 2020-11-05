@@ -119,7 +119,12 @@ bool fp_fset(
 		return false;
 	}
 
-	frame->pixels[fp_fcalc_index(x, y, frame->width)] = color;
+	unsigned int index = fp_fcalc_index(x, y, frame->width);
+	if(index < 0 || index >= frame->length) {
+		return false;
+	}
+
+	frame->pixels[index] = color;
 	return true;
 }
 

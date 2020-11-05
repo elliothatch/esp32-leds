@@ -176,7 +176,195 @@ bool animation_view_demo_free(fp_view* view, void** data) {
 	return true;
 }
 
-#define DEMO_COUNT 3
+fp_viewid layer_view_demo_init(void** data) {
+	fp_viewid layerViewId = fp_layer_view_create(SCREEN_WIDTH, SCREEN_HEIGHT, 6, 6, 3);
+
+	fp_view* layerView = fp_view_get(layerViewId);
+
+	fp_layer_view_data* layerData = layerView->data;
+
+	layerData->layers[0].blendMode = FP_BLEND_ADD;
+	layerData->layers[0].offsetX = 1;
+	layerData->layers[0].offsetY = 0;
+	fp_ffill_rect(fp_view_get_frame(layerData->layers[0].view), 0, 0, 6, 5, rgb(255, 0, 0));
+
+	layerData->layers[1].blendMode = FP_BLEND_ADD;
+	layerData->layers[1].offsetX = 0;
+	layerData->layers[1].offsetY = 3;
+	fp_ffill_rect(fp_view_get_frame(layerData->layers[1].view), 0, 0, 5, 4, rgb(0, 255, 0));
+
+	layerData->layers[2].blendMode = FP_BLEND_ADD;
+	layerData->layers[2].offsetX = 3;
+	layerData->layers[2].offsetY = 3;
+	fp_ffill_rect(fp_view_get_frame(layerData->layers[2].view), 0, 0, 5, 4, rgb(0, 0, 255));
+
+	return layerViewId;
+}
+
+bool layer_view_demo_free(fp_view* view, void** data) {
+	return true;
+}
+
+void draw_arc_filled(fp_frameid id, int centerX, int centerY, int radius, float startTheta, float endTheta, rgb_color color) {
+	if(endTheta - startTheta >= M_PI) {
+		// can't deal with large angles
+		float centerAngle = (endTheta - startTheta)/2.0f + startTheta;
+		draw_arc_filled(id, centerX, centerY, radius, startTheta, centerAngle, color);
+		draw_arc_filled(id, centerX, centerY, radius, centerAngle, endTheta, color);
+		return;
+	}
+
+	/* normal vectors for each angle */
+	float startNormalX = radius * sin(startTheta + M_PI_2);
+	float startNormalY = radius * cos(startTheta + M_PI_2);
+
+	float endNormalX = radius * sin(endTheta - M_PI_2);
+	float endNormalY = radius * cos(endTheta - M_PI_2);
+
+	/* reduce the radius threshold to make the circle appear rounder for small values */
+	float radiusModifier = 0.7f;
+
+	/* just check every pixel in the enclosing rectangle and set the appropriate pixels */
+	for(int y = -radius; y <= radius; y++) {
+		for(int x = -radius; x <= radius; x++) {
+			if(x*x + y*y < radius*radius * radiusModifier) {
+				// in circle
+				if(// check if clockwise from start
+					-startNormalX*y + startNormalY*x > 0 &&
+					// check counterclockwise from end
+					-endNormalX*y + endNormalY*x < 0) {
+					/* true) { */
+
+					fp_fset(id, centerX + x, centerY + y, color);
+				}
+			}
+		}
+	}
+}
+
+fp_viewid animated_layer_view_demo_init(void** data) {
+	/*
+	fp_viewid frameViews[] = {
+		fp_frame_view_create(8, 8, rgb(0, 0, 0)),
+		fp_frame_view_create(8, 8, rgb(0, 0, 0)),
+		fp_frame_view_create(8, 8, rgb(0, 0, 0)),
+		fp_frame_view_create(8, 8, rgb(0, 0, 0)),
+		fp_frame_view_create(8, 8, rgb(0, 0, 0)),
+	};
+	*/
+
+	/* fp_viewid frameViewId = fp_frame_view_create(8, 8, rgb(0, 0, 0)); */
+	/* fp_view* frameView = fp_view_get(frameViewId); */
+	/* fp_frame_view_data* frameData = frameView->data; */
+	/* draw_arc_filled(frameData->frame, 3, 3, 3, 0, 2.0*M_PI, rgb(255, 0, 0)); */
+
+	/* draw_arc_filled(frameData->frame, 4, 4, 3, 0, 2.0*M_PI/3.0, rgb(255, 0, 0)); */
+	/* draw_arc_filled(frameData->frame, 4, 4, 3, 2.0*M_PI/3.0, 2.0*2.0*M_PI/3.0, rgb(0, 255, 0)); */
+	/* draw_arc_filled(frameData->frame, 4, 4, 3, 2.0*2.0*M_PI/3.0, 2.0*M_PI, rgb(0, 0, 255)); */
+	
+	/* draw_arc_filled(fp_view_get_frame(frameViews[0]), 3, 3, 1, 0, 2.0*M_PI/3.0, rgb(255, 0, 0)); */
+	/* draw_arc_filled(fp_view_get_frame(frameViews[1]), 3, 3, 2, 0, 2.0*M_PI/3.0, rgb(255, 0, 0)); */
+	/* draw_arc_filled(fp_view_get_frame(frameViews[2]), 3, 3, 3, 0, 2.0*M_PI/3.0, rgb(255, 0, 0)); */
+	/* draw_arc_filled(fp_view_get_frame(frameViews[3]), 3, 3, 4, 0, 2.0*M_PI/3.0, rgb(255, 0, 0)); */
+	/* draw_arc_filled(fp_view_get_frame(frameViews[4]), 3, 3, 5, 0, 2.0*M_PI/3.0, rgb(255, 0, 0)); */
+
+	rgb_color colors[] = {
+		rgb(255, 0, 0),
+		rgb(0, 255, 0),
+		rgb(0, 0, 255),
+		rgb(255, 255, 0),
+		rgb(255, 0, 255),
+	};
+	float angle = 2.0*M_PI/5.0;
+
+	/*
+	for(int i = 0; i < 5; i++) {
+		for(int j = 0; j < 5; j++) {
+			draw_arc_filled(fp_view_get_frame(frameViews[i]), 3, 3, 4, j*angle + i*0.2f, (j+1)*angle + i*0.2f, colors[j]);
+		}
+	}
+
+	fp_viewid animViewId = fp_anim_view_create_composite(frameViews, 5, 700);
+	*/
+
+	unsigned int frameCount = 30;
+	fp_viewid animViewId = fp_anim_view_create(8, 8, frameCount, 1000/30);
+	fp_view* animView = fp_view_get(animViewId);
+	fp_anim_view_data* animData = animView->data;
+
+	float angleOffset = 2.0f*M_PI / animData->frameCount;
+
+	for(int i = 0; i < animData->frameCount; i++) {
+		for(int j = 0; j < 5; j++) {
+			draw_arc_filled(fp_view_get_frame(animData->frames[i]), 3, 3, 4, j*angle + i*angleOffset, (j+1)*angle + i*angleOffset, colors[j]);
+		}
+	}
+
+	fp_viewid layers[] = {
+		animViewId,
+		fp_frame_view_create(3, 1, rgb(255, 0, 0)), // replace
+		fp_frame_view_create(1, 3, rgb(255, 0, 0)), // add
+		fp_frame_view_create(3, 1, rgb(255, 0, 0)), // multiply
+		fp_frame_view_create(1, 3, rgb(255, 0, 0))  // alpha
+	};
+
+	fp_viewid layerViewId = fp_layer_view_create_composite(8, 8, layers, 5);
+	fp_view* layerView = fp_view_get(layerViewId);
+
+	fp_layer_view_data* layerData = layerView->data;
+
+	layerData->layers[1].blendMode = FP_BLEND_REPLACE;
+	layerData->layers[1].offsetX = 4;
+	layerData->layers[1].offsetY = 3;
+
+	layerData->layers[2].blendMode = FP_BLEND_ADD;
+	layerData->layers[2].offsetX = 3;
+	layerData->layers[2].offsetY = 0;
+
+	layerData->layers[3].blendMode = FP_BLEND_MULTIPLY;
+	layerData->layers[3].offsetX = 0;
+	layerData->layers[3].offsetY = 3;
+
+	layerData->layers[4].blendMode = FP_BLEND_ALPHA;
+	layerData->layers[4].offsetX = 3;
+	layerData->layers[4].offsetY = 4;
+	layerData->layers[4].alpha = 255/2;
+
+	fp_anim_play(animViewId);
+	return layerViewId;
+
+	/*
+	fp_viewid spinAnimationViewId = fp_anim_view_create(SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1,
+	fp_viewid layerViewId = fp_layer_view_create(SCREEN_WIDTH, SCREEN_HEIGHT, 6, 6, 3);
+
+	fp_view* layerView = fp_view_get(layerViewId);
+
+	fp_layer_view_data* layerData = layerView->data;
+
+	layerData->layers[0].blendMode = FP_BLEND_ADD;
+	layerData->layers[0].offsetX = 1;
+	layerData->layers[0].offsetY = 0;
+	fp_ffill_rect(fp_view_get_frame(layerData->layers[0].view), 0, 0, 6, 5, rgb(255, 0, 0));
+
+	layerData->layers[1].blendMode = FP_BLEND_ADD;
+	layerData->layers[1].offsetX = 0;
+	layerData->layers[1].offsetY = 3;
+	fp_ffill_rect(fp_view_get_frame(layerData->layers[1].view), 0, 0, 5, 4, rgb(0, 255, 0));
+
+	layerData->layers[2].blendMode = FP_BLEND_ADD;
+	layerData->layers[2].offsetX = 3;
+	layerData->layers[2].offsetY = 3;
+	fp_ffill_rect(fp_view_get_frame(layerData->layers[2].view), 0, 0, 5, 4, rgb(0, 0, 255));
+
+	return layerViewId;
+	*/
+}
+
+bool animated_layer_view_demo_free(fp_view* view, void** data) {
+	return true;
+}
+
+#define DEMO_COUNT 5
 demo_mode demos[] = {{
 	&frame_view_demo_init,
 	&frame_view_demo_free,
@@ -190,6 +378,16 @@ demo_mode demos[] = {{
 }, {
 	&animation_view_demo_init,
 	&animation_view_demo_free,
+	0,
+	NULL
+}, {
+	&layer_view_demo_init,
+	&layer_view_demo_free,
+	0,
+	NULL
+}, {
+	&animated_layer_view_demo_init,
+	&animated_layer_view_demo_free,
 	0,
 	NULL
 }};
@@ -271,7 +469,12 @@ void select_demo(fp_rotary_encoder* re) {
 	fp_view_mark_dirty(screenViewId);
 	*/
 
-	demoIndex = abs(re->position) % DEMO_COUNT;
+	if(re->position < 0) {
+		demoIndex = DEMO_COUNT - ((-re->position) % DEMO_COUNT) ;
+	}
+	else {
+		demoIndex = abs(re->position) % DEMO_COUNT;
+	}
 	printf("demo %d\n", demoIndex);
 	demo_mode* demo = &demos[demoIndex];
 	/* queue the demo set on the main task, since free/init may take awhile */
@@ -540,7 +743,7 @@ fp_viewid create_animated_layer_test(fp_viewid screenView) {
 	fp_anim_play(animViewIds[4]);
 
 
-	fp_viewid layerViewId = fp_create_layer_view_composite(8, 8, layerViews, layerCount);
+	fp_viewid layerViewId = fp_layer_view_create_composite(8, 8, layerViews, layerCount);
 
 	fp_view* layerView = fp_view_get(layerViewId);
 	fp_layer_view_data* layerData = layerView->data;
@@ -596,7 +799,7 @@ fp_viewid create_layer_alpha_test() {
 
 	const unsigned int layerCount = 4;
 
-	fp_viewid layerViewId = fp_create_layer_view(8, 8, 5, 5, layerCount);
+	fp_viewid layerViewId = fp_layer_view_create(8, 8, 5, 5, layerCount);
 	fp_view* layerView = fp_view_get(layerViewId);
 	fp_layer_view_data* layerData = layerView->data;
 

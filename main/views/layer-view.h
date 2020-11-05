@@ -30,7 +30,7 @@ typedef struct {
 
 } fp_layer_view_data;
 
-fp_viewid fp_create_layer_view(
+fp_viewid fp_layer_view_create(
 	unsigned int width,
 	unsigned int height,
 	unsigned int layerWidth,
@@ -38,7 +38,7 @@ fp_viewid fp_create_layer_view(
 	unsigned int layerCount
 );
 
-fp_viewid fp_create_layer_view_composite(
+fp_viewid fp_layer_view_create_composite(
 	unsigned int width,
 	unsigned int height,
 	fp_viewid* layers,
