@@ -9,7 +9,7 @@ fp_viewid fp_frame_view_create(unsigned int width, unsigned int height, rgb_colo
 		return 0;
 	}
 
-	frameData->frame = fp_create_frame(width, height, color);
+	frameData->frame = fp_frame_create(width, height, color);
 	return fp_view_create(FP_VIEW_FRAME, false, frameData);
 }
 

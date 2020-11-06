@@ -59,7 +59,7 @@ fp_ppm_image fp_ppm_parse(char* bytes, size_t length) {
 fp_frameid fp_ppm_create_frame(char* bytes, size_t length) {
 	fp_ppm_image image = fp_ppm_parse(bytes, length);
 
-	fp_frameid frameid = fp_create_frame(image.width, image.height, rgb(0, 0, 0));
+	fp_frameid frameid = fp_frame_create(image.width, image.height, rgb(0, 0, 0));
 	fp_frame* frame = fp_frame_get(frameid);
 
 	for(int i = 0; i < image.width * image.height; i++) {
@@ -92,5 +92,5 @@ fp_frameid fp_ppm_load_image(char* filepath) {
 }
 
 /* fp_frameid fp_create_image_frame() { */
-/* 	fp_frameid frameId = fp_create_frame(width, height, rgb(0,0,0)); */
+/* 	fp_frameid frameId = fp_frame_create(width, height, rgb(0,0,0)); */
 /* } */

@@ -51,8 +51,6 @@
 #define GPIO_INPUT_PIN_MASK ((1ULL<<GPIO_INPUT_PIN_0) | (1ULL<<GPIO_INPUT_PIN_1) | (1ULL<<GPIO_INPUT_PIN_2))
 #define ESP_INTR_FLAG_DEFAULT 0
 
-fp_viewid create_nvs_image_test();
-
 void init_gpio_test();
 
 typedef struct {
@@ -588,14 +586,215 @@ bool ppm_image_demo_free(fp_view* view, void** data) {
 	return true;
 }
 
+#define MAZE_N 1
+#define MAZE_E 1<<1
+#define MAZE_S 1<<2
+#define MAZE_W 1<<3
+
+
+int maze_dx(unsigned int direction) {
+	return (((direction & MAZE_E) >> 1) * 1) | (((direction & MAZE_W) >> 3) * -1);
+}
+
+int maze_dy(unsigned int direction) {
+	return ((direction & MAZE_N) * 1) | (((direction & MAZE_S) >> 2) * -1);
+}
+
+unsigned int maze_rotate_cw(unsigned int direction) {
+	return ((direction << 1) | (direction >> 3)) & 0xf;
+}
+
+unsigned int maze_rotate_ccw(unsigned int direction) {
+	return ((direction >> 1) | (direction << 3)) & 0xf;
+}
+
+unsigned int maze_opposite(unsigned int direction) {
+	/* swap N/S and E/W values */
+	return ((direction & MAZE_N) << 2) | ((direction & MAZE_S) >> 2) |
+		((direction & MAZE_E) << 2) | ((direction & MAZE_W) >> 2);
+}
+
+unsigned int MAZE_DIRECTIONS[] = { MAZE_N, MAZE_S, MAZE_E, MAZE_W };
+
+void maze_carve_passages(fp_frame* frame, unsigned int x,unsigned int y) {
+
+	unsigned int directions[] = { MAZE_N, MAZE_S, MAZE_E, MAZE_W };
+	// shuffle
+	for(int i = 3; i >= 0; i--) {
+		unsigned int target = esp_random() % (i+1); /* not very random */
+
+		unsigned int temp = directions[i];
+		directions[i] = directions[target];
+		directions[target] = temp;
+	}
+
+	for(int i = 0; i < 4; i++) {
+		unsigned int direction = directions[i];
+		unsigned int oppositeDirection = maze_opposite(direction);
+
+		int nextX = maze_dx(direction) + x;
+		int nextY = maze_dy(direction) + y;
+		unsigned int nextIndex = fp_fcalc_index(nextX, nextY, frame->width);
+
+		if(fp_frame_has_point(frame, nextX, nextY) && frame->pixels[nextIndex].bits == 0) {
+			frame->pixels[fp_fcalc_index(x, y, frame->width)].bits |= direction;
+			frame->pixels[nextIndex].bits |= oppositeDirection;
+
+			maze_carve_passages(frame, nextX, nextY);
+		}
+	}
+}
+
+typedef struct {
+	unsigned int x;
+	unsigned int y;
+	fp_frameid maze;
+
+	unsigned int lastDirection;
+	TickType_t lastStepTick;
+} maze_state;
+
+bool maze_render(fp_view* view) {
+	fp_dynamic_view_data* viewData = view->data;
+	fp_frame* viewFrame = fp_frame_get(viewData->frame);
+
+	maze_state* maze = viewData->data;
+	fp_frame* mazeFrame = fp_frame_get(maze->maze);
+
+	TickType_t lastStepTick = maze->lastStepTick;
+	TickType_t currentTick = xTaskGetTickCount();
+
+	if(currentTick > lastStepTick + pdMS_TO_TICKS(500)) {
+		// try to step to the right
+		unsigned int direction = maze_rotate_cw(maze->lastDirection);
+		int index = fp_fcalc_index(maze->x, maze->y, mazeFrame->width);
+
+		do {
+			unsigned int oppositeDirection = maze_opposite(direction);
+
+			int nextX = maze_dx(direction) + maze->x;
+			int nextY = maze_dy(direction) + maze->y;
+			unsigned int nextIndex = fp_fcalc_index(nextX, nextY, mazeFrame->width);
+
+			if(fp_frame_has_point(mazeFrame, nextX, nextY)
+				&& (mazeFrame->pixels[index].bits & direction) != 0
+				&& (mazeFrame->pixels[nextIndex].bits & oppositeDirection) != 0) {
+				maze->x = nextX;
+				maze->y = nextY;
+				maze->lastDirection = direction;
+				break;
+			}
+
+			direction = maze_rotate_ccw(direction);
+		} while(direction != maze_rotate_cw(maze->lastDirection));
+
+		maze->lastStepTick = currentTick;
+	}
+
+
+	fp_ffill_rect(viewData->frame, 0, 0, viewFrame->width, fp_frame_height(viewFrame), rgb(0,0,0));
+
+	fp_fset(viewData->frame, maze->x, maze->y, rgb(255, 255, 0));
+
+	/* cast rays in 4 directions to find and illuminate walls */
+	for(int i = 0; i < 4; i++) {
+		unsigned int direction = MAZE_DIRECTIONS[i];
+		unsigned int oppositeDirection = maze_opposite(direction);
+		unsigned int leftDirection = maze_rotate_ccw(direction);
+		unsigned int rightDirection = maze_rotate_cw(direction);
+
+		int x = maze->x;
+		int y = maze->y;
+
+		do {
+			unsigned int index = fp_fcalc_index(x, y, mazeFrame->width);
+
+			int nextX = x + maze_dx(direction);
+			int nextY = y + maze_dy(direction);
+			unsigned int nextIndex = fp_fcalc_index(nextX, nextY, mazeFrame->width);
+
+			if(!fp_frame_has_point(mazeFrame, nextX, nextY)) {
+				// outside frame
+				break;
+			}
+
+			if((mazeFrame->pixels[index].bits & direction) == 0
+				|| (mazeFrame->pixels[nextIndex].bits & oppositeDirection) == 0) {
+				// draw a wall and stop
+				viewFrame->pixels[nextIndex] = rgb(255, 255, 255);
+				break;
+			}
+			else {
+				// draw floor
+				viewFrame->pixels[nextIndex] = rgb(255, 0, 0);
+			}
+
+
+			int leftX = nextX + maze_dx(leftDirection);
+			int leftY = nextY + maze_dy(leftDirection);
+			unsigned int leftIndex = fp_fcalc_index(leftX, leftY, mazeFrame->width);
+
+			int rightX = nextX + maze_dx(rightDirection);
+			int rightY = nextY + maze_dy(rightDirection);
+			unsigned int rightIndex = fp_fcalc_index(rightX, rightY, mazeFrame->width);
+			
+
+			if(fp_frame_has_point(mazeFrame, leftX, leftY) && (
+				(mazeFrame->pixels[nextIndex].bits & leftDirection) == 0
+				|| (mazeFrame->pixels[leftIndex].bits & rightDirection) == 0)
+			) {
+				// draw a wall
+				viewFrame->pixels[leftIndex] = rgb(255, 255, 255);
+			}
+
+			if(fp_frame_has_point(mazeFrame, rightX, rightY) && (
+				(mazeFrame->pixels[nextIndex].bits & rightDirection) == 0
+				&& (mazeFrame->pixels[rightIndex].bits & leftDirection) == 0)
+			) {
+				// draw a wall
+				viewFrame->pixels[rightIndex] = rgb(255, 255, 255);
+			}
+
+			x = nextX;
+			y = nextY;
+			
+
+		} while(true);
+	}
+
+	return true;
+}
+
+fp_viewid maze_demo_init(void** data) {
+	fp_frameid maze = fp_frame_create(SCREEN_WIDTH, SCREEN_HEIGHT, rgb(0, 0, 0));
+	fp_frame* mazeFrame = fp_frame_get(maze);
+	maze_carve_passages(mazeFrame, 0, 0);
+
+	maze_state* state = malloc(sizeof(maze_state));
+
+	state->x = mazeFrame->width / 2;
+	state->y = fp_frame_height(mazeFrame) / 2;
+	state->maze = maze;
+	state->lastDirection = MAZE_N;
+	state->lastStepTick = xTaskGetTickCount();
+
+	fp_viewid view = fp_dynamic_view_create(SCREEN_WIDTH, SCREEN_HEIGHT, &maze_render, NULL, state);
+
+	return view;
+
+}
+	
+bool maze_demo_free(fp_view* view, void** data) {
+	fp_dynamic_view_data* viewData = view->data;
+	maze_state* maze = viewData->data;
+	fp_frame_free(maze->maze);
+	free(maze);
+	return true;
+}
+
 demo_mode demos[] = {{
 	&frame_view_demo_init,
 	&frame_view_demo_free,
-	0,
-	NULL
-}, {
-	&ppm_image_demo_init,
-	&ppm_image_demo_free,
 	0,
 	NULL
 }, {
@@ -636,6 +835,16 @@ demo_mode demos[] = {{
 }, {
 	&animated_transition_view_demo_init,
 	&animated_transition_view_demo_free,
+	0,
+	NULL
+}, {
+	&ppm_image_demo_init,
+	&ppm_image_demo_free,
+	0,
+	NULL
+}, {
+	&maze_demo_init,
+	&maze_demo_free,
 	0,
 	NULL
 }};
@@ -749,8 +958,7 @@ void select_demo(fp_rotary_encoder* re) {
 	}
 }
 
-void change_brightness(void* data) {
-	fp_button* button = data;
+void change_brightness(fp_button* button) {
 	printf("button state %d\n", button->state);
 
 	if(button->state == 1) {
@@ -758,7 +966,7 @@ void change_brightness(void* data) {
 		return;
 	}
 
-	fp_viewid screenViewId = button->data;
+	fp_viewid screenViewId = (fp_viewid)button->data;
 	fp_view* screenView = fp_view_get(screenViewId);
 	fp_ws2812_view_data* screenData = screenView->data;
 
@@ -835,13 +1043,6 @@ void app_main()
 
 	play_demo(mainViewId, &demos[0]);
 
-	/* fp_viewid mainViewId = create_animation_test(); */
-	/* fp_viewid mainViewId = create_animated_layer_test(); */
-	/* fp_viewid mainViewId = create_layer_alpha_test(); */
-	/* fp_viewid mainViewId = create_transition_test(); */
-	/* fp_viewid mainViewId = create_animated_transition_test(); */
-	/* fp_viewid mainViewId = create_nvs_image_test(); */
-
 	fp_ws2812_view_set_child(screenViewId, mainViewId);
 
 	gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
@@ -913,7 +1114,7 @@ void app_main()
 	/* xQueueSend( */
 
     /* fp_frameid frame2 = fp_create_frame(6, 6, rgb(0, 255, 0)); */
-    /* fp_frameid frame3 = fp_create_frame(4, 4, rgb(0, 0, 255)); */
+    /* fp_frameid frame3 = fp_frame_create(4, 4, rgb(0, 0, 255)); */
 
 
     /* struct led_state new_state; */

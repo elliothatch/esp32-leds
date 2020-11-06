@@ -50,7 +50,7 @@ void fp_task_render(void *pvParameters) {
 	/* ws2812_control_init(); */
 
 	/* uint8_t brightness = 1; */
-	/* fp_frameid frame1 = fp_create_frame(8, 8, rgb(brightness, 0, 0)); */
+	/* fp_frameid frame1 = fp_frame_create(8, 8, rgb(brightness, 0, 0)); */
 	/* fp_ffill_rect(frame1, 0, 0, 6, 6, rgb(0, brightness, 0)); */
 	/* fp_ffill_rect(frame1, 0, 0, 4, 4, rgb(0, 0, brightness)); */
 

@@ -22,7 +22,7 @@ bool fp_frame_init(unsigned int capacity);
 
 /* creates a frame with given width and height, and returns its id
  * if the frame could not be created, returns id 0, which points to the NULL frame (all fields 0) */
-fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color color);
+fp_frameid fp_frame_create(unsigned int width, unsigned int height, rgb_color color);
 
 bool fp_frame_free(fp_frameid frame);
 
@@ -31,6 +31,7 @@ bool fp_frame_free(fp_frameid frame);
 fp_frame* fp_frame_get(fp_frameid id);
 
 unsigned int fp_frame_height(fp_frame* frame);
+bool fp_frame_has_point(fp_frame* frame, int x, int y);
 unsigned int fp_fcalc_index(unsigned int x, unsigned int y, unsigned int width);
 
 bool fp_fset(

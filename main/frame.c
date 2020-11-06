@@ -14,6 +14,10 @@ unsigned int fp_fcalc_index(unsigned int x, unsigned int y, unsigned int width) 
 	return y * width + x % width;
 }
 
+bool fp_frame_has_point(fp_frame* frame, int x, int y) {
+	return x >= 0 && x < frame->width && y >= 0 && y < fp_frame_height(frame);
+}
+
 fp_pool* framePool = NULL;
 fp_frame* zeroFrame;
 
@@ -29,13 +33,13 @@ bool fp_frame_init(unsigned int capacity) {
 
 /* fp_frame framePool[FP_FRAME_COUNT] = {{ 0, 0, NULL}}; */
 
-/** locks fp_create_frame. allows multiple tasks to safely create frames */
+/** locks fp_frame_create. allows multiple tasks to safely create frames */
 SemaphoreHandle_t createFrameLock = NULL;
 
-fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color color) {
+fp_frameid fp_frame_create(unsigned int width, unsigned int height, rgb_color color) {
 	fp_frameid id = fp_pool_add(framePool);
 	if(id == 0) {
-		printf("error: fp_create_frame: failed to add frame\n");
+		printf("error: fp_frame_create: failed to add frame\n");
 		return 0;
 	}
 
@@ -43,7 +47,7 @@ fp_frameid fp_create_frame(unsigned int width, unsigned int height, rgb_color co
 
 	rgb_color* pixels = malloc(length * sizeof(rgb_color));
 	if(!pixels) {
-		printf("error: fp_create_frame: failed to allocate memory for pixels\n");
+		printf("error: fp_frame_create: failed to allocate memory for pixels\n");
 		fp_pool_delete(framePool, id);
 		return 0;
 	}

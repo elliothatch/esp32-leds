@@ -32,7 +32,7 @@ fp_viewid fp_layer_view_create(
 
 	layerData->layerCount = layerCount;
 	layerData->layers = layers;
-	layerData->frame = fp_create_frame(width, height, rgb(0,0,0));
+	layerData->frame = fp_frame_create(width, height, rgb(0,0,0));
 
 	fp_viewid id = fp_view_create(FP_VIEW_LAYER, false, layerData);
 
@@ -76,7 +76,7 @@ fp_viewid fp_layer_view_create_composite(
 
 	layerData->layerCount = layerCount;
 	layerData->layers = newLayers;
-	layerData->frame = fp_create_frame(width, height, rgb(0,0,0));
+	layerData->frame = fp_frame_create(width, height, rgb(0,0,0));
 
 	fp_viewid id = fp_view_create(FP_VIEW_LAYER, true, layerData);
 

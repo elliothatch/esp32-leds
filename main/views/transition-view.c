@@ -37,7 +37,7 @@ fp_viewid fp_create_transition_view(
 	transitionData->pages = pages;
 	transitionData->pageIndex = 0;
 	transitionData->previousPageIndex = 0;
-	transitionData->frame = fp_create_frame(width, height, rgb(0,0,0));
+	transitionData->frame = fp_frame_create(width, height, rgb(0,0,0));
 	transitionData->transition = transition;
 	transitionData->blendFn = &rgb_alpha;
 	transitionData->transitionPeriodMs = transitionPeriodMs;
@@ -88,7 +88,7 @@ fp_viewid fp_create_transition_view_composite(
 	transitionData->pages = newPages;
 	transitionData->pageIndex = 0;
 	transitionData->previousPageIndex = 0;
-	transitionData->frame = fp_create_frame(width, height, rgb(0,0,0));
+	transitionData->frame = fp_frame_create(width, height, rgb(0,0,0));
 	
 	transitionData->transition = transition;
 	transitionData->blendFn = &rgb_alpha;

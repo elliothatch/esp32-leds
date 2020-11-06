@@ -15,7 +15,7 @@ fp_viewid fp_dynamic_view_create(
 		return 0;
 	}
 
-	dynamicData->frame = fp_create_frame(width, height, rgb(0, 0, 0));
+	dynamicData->frame = fp_frame_create(width, height, rgb(0, 0, 0));
 	dynamicData->renderFunc = renderFunc;
 	dynamicData->onnextRenderFunc = onnextRenderFunc;
 	dynamicData->data = data;

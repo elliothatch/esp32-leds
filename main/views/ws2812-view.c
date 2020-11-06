@@ -57,7 +57,7 @@ fp_viewid fp_create_ws2812_view(unsigned int width, unsigned int height) {
 		return 0;
 	}
 
-	screenData->frame = fp_create_frame(width, height, rgb(0,0,0));
+	screenData->frame = fp_frame_create(width, height, rgb(0,0,0));
 	screenData->childView = 0;
 	screenData->brightness = 1.0f;
 
