@@ -614,11 +614,11 @@ unsigned int maze_opposite(unsigned int direction) {
 		((direction & MAZE_E) << 2) | ((direction & MAZE_W) >> 2);
 }
 
-unsigned int MAZE_DIRECTIONS[] = { MAZE_N, MAZE_S, MAZE_E, MAZE_W };
+unsigned int MAZE_DIRECTIONS[] = { MAZE_N, MAZE_E, MAZE_S, MAZE_W };
 
 void maze_carve_passages(fp_frame* frame, unsigned int x,unsigned int y) {
 
-	unsigned int directions[] = { MAZE_N, MAZE_S, MAZE_E, MAZE_W };
+	unsigned int directions[] = { MAZE_N, MAZE_E, MAZE_S, MAZE_W };
 	// shuffle
 	for(int i = 3; i >= 0; i--) {
 		unsigned int target = esp_random() % (i+1); /* not very random */
@@ -666,27 +666,24 @@ bool maze_render(fp_view* view) {
 
 	if(currentTick > lastStepTick + pdMS_TO_TICKS(500)) {
 		// try to step to the right
-		unsigned int direction = maze_rotate_cw(maze->lastDirection);
+		// clockwise and counter-clockwise are inverted??
+		unsigned int direction = maze_rotate_ccw(maze->lastDirection);
 		int index = fp_fcalc_index(maze->x, maze->y, mazeFrame->width);
 
 		do {
-			unsigned int oppositeDirection = maze_opposite(direction);
-
 			int nextX = maze_dx(direction) + maze->x;
 			int nextY = maze_dy(direction) + maze->y;
-			unsigned int nextIndex = fp_fcalc_index(nextX, nextY, mazeFrame->width);
 
 			if(fp_frame_has_point(mazeFrame, nextX, nextY)
-				&& (mazeFrame->pixels[index].bits & direction) != 0
-				&& (mazeFrame->pixels[nextIndex].bits & oppositeDirection) != 0) {
+				&& (mazeFrame->pixels[index].bits & direction) != 0) {
 				maze->x = nextX;
 				maze->y = nextY;
 				maze->lastDirection = direction;
 				break;
 			}
 
-			direction = maze_rotate_ccw(direction);
-		} while(direction != maze_rotate_cw(maze->lastDirection));
+			direction = maze_rotate_cw(direction);
+		} while(direction != maze_rotate_ccw(maze->lastDirection));
 
 		maze->lastStepTick = currentTick;
 	}
@@ -718,15 +715,20 @@ bool maze_render(fp_view* view) {
 				break;
 			}
 
-			if((mazeFrame->pixels[index].bits & direction) == 0
-				|| (mazeFrame->pixels[nextIndex].bits & oppositeDirection) == 0) {
-				// draw a wall and stop
+			if((mazeFrame->pixels[index].bits & direction) == 0) {
+				// draw a wall and stop after checking diagonals
 				viewFrame->pixels[nextIndex] = rgb(255, 255, 255);
 				break;
 			}
 			else {
 				// draw floor
-				viewFrame->pixels[nextIndex] = rgb(255, 0, 0);
+				/* rgb_color color = rgb( */
+				/* 	255 - ((x+y)*255/(mazeFrame->width+fp_frame_height(mazeFrame))), */
+				/* 	x*255/mazeFrame->width, */
+				/* 	y*255/fp_frame_height(mazeFrame) */
+				/* ); */
+				rgb_color color = rgb(255, 0, 0);
+				viewFrame->pixels[nextIndex] = color;
 			}
 
 
@@ -734,30 +736,55 @@ bool maze_render(fp_view* view) {
 			int leftY = nextY + maze_dy(leftDirection);
 			unsigned int leftIndex = fp_fcalc_index(leftX, leftY, mazeFrame->width);
 
+			if(fp_frame_has_point(mazeFrame, leftX, leftY) && (
+				(mazeFrame->pixels[nextIndex].bits & leftDirection) == 0)
+			) {
+				if(abs(leftX - (int)maze->x) <= 1 && abs(leftY - (int)maze->y) <= 1) {
+					// only fill in directly diagonal walls if they are inaccessible from both orthagonally adjacent sizes
+					int leftBehindX = leftX + maze_dx(oppositeDirection);
+					int leftBehindY = leftY + maze_dy(oppositeDirection);
+					int leftBehindIndex = fp_fcalc_index(leftBehindX, leftBehindY, mazeFrame->width);
+					
+					if((mazeFrame->pixels[leftBehindIndex].bits & direction) == 0
+						|| (mazeFrame->pixels[index].bits & leftDirection) == 0) {
+						// draw a wall
+						viewFrame->pixels[leftIndex] = rgb(255, 255, 255);
+					}
+
+				}
+				else {
+					// draw a wall
+					viewFrame->pixels[leftIndex] = rgb(255, 255, 255);
+				}
+			}
+
 			int rightX = nextX + maze_dx(rightDirection);
 			int rightY = nextY + maze_dy(rightDirection);
 			unsigned int rightIndex = fp_fcalc_index(rightX, rightY, mazeFrame->width);
-			
-
-			if(fp_frame_has_point(mazeFrame, leftX, leftY) && (
-				(mazeFrame->pixels[nextIndex].bits & leftDirection) == 0
-				|| (mazeFrame->pixels[leftIndex].bits & rightDirection) == 0)
-			) {
-				// draw a wall
-				viewFrame->pixels[leftIndex] = rgb(255, 255, 255);
-			}
 
 			if(fp_frame_has_point(mazeFrame, rightX, rightY) && (
-				(mazeFrame->pixels[nextIndex].bits & rightDirection) == 0
-				&& (mazeFrame->pixels[rightIndex].bits & leftDirection) == 0)
+				(mazeFrame->pixels[nextIndex].bits & rightDirection) == 0)
 			) {
-				// draw a wall
-				viewFrame->pixels[rightIndex] = rgb(255, 255, 255);
+				if(abs(rightX - (int)maze->x) <= 1 && abs(rightY -(int) maze->y) <= 1) {
+					// only fill in directly diagonal walls if they are inaccessible from both orthagonally adjacent sizes
+					int rightBehindX = rightX + maze_dx(oppositeDirection);
+					int rightBehindY = rightY + maze_dy(oppositeDirection);
+					int rightBehindIndex = fp_fcalc_index(rightBehindX, rightBehindY, mazeFrame->width);
+					
+					if((mazeFrame->pixels[rightBehindIndex].bits & direction) == 0
+						|| (mazeFrame->pixels[index].bits & rightDirection) == 0) {
+						// draw a wall
+						viewFrame->pixels[rightIndex] = rgb(255, 255, 255);
+					}
+				}
+				else {
+					// draw a wall
+					viewFrame->pixels[rightIndex] = rgb(255, 255, 255);
+				}
 			}
 
 			x = nextX;
 			y = nextY;
-			
 
 		} while(true);
 	}
