@@ -25,6 +25,7 @@ typedef struct fp_rotary_encoder {
 	int position;
 	/** sub-position of rotary encoder; used to detect a position change */
 	int state;
+	bool lastDirectionCw;
 
 	int lastInputA;
 	int lastInputB;

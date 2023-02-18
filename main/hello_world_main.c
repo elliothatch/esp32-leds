@@ -9,6 +9,8 @@
 #include "freertos/semphr.h"
 #include "esp_system.h"
 #include "esp_spi_flash.h"
+#include "esp_chip_info.h"
+#include "esp_random.h"
 
 /* #include "nvs_flash.h" */
 /* #include "nvs.h" */
@@ -56,6 +58,8 @@ void init_gpio_test();
 typedef struct {
 	fp_viewid (*init_mode) (void**);
 	bool (*free_mode) (fp_view*, void**);
+	void (*onrotate_mode) (fp_view*, fp_rotary_encoder*);
+	void (*onbutton_mode) (fp_view*, fp_button*);
 	fp_viewid view;
 	void* data;
 } demo_mode;
@@ -650,9 +654,77 @@ typedef struct {
 	unsigned int y;
 	fp_frameid maze;
 
+	unsigned int exitX;
+	unsigned int exitY;
+
 	unsigned int lastDirection;
+	unsigned int autostepPeriodMs;
 	TickType_t lastStepTick;
 } maze_state;
+
+bool maze_step(maze_state* maze, unsigned int direction) {
+	fp_frame* mazeFrame = fp_frame_get(maze->maze);
+
+	unsigned int index = fp_fcalc_index(maze->x, maze->y, mazeFrame->width);
+	int nextX = maze->x + maze_dx(direction);
+	int nextY = maze->y + maze_dy(direction);
+
+	if(fp_frame_has_point(mazeFrame, nextX, nextY)
+		&& (mazeFrame->pixels[index].bits & direction) != 0) {
+		maze->x = nextX;
+		maze->y = nextY;
+		maze->lastDirection = direction;
+
+		if(maze->x == maze->exitX && maze->y == maze->exitY) {
+			printf("you win!\n");
+			fp_ffill_rect(maze->maze, 0, 0, mazeFrame->width, fp_frame_height(mazeFrame), rgb(0,0,0));
+			maze_carve_passages(mazeFrame, maze->x, maze->y);
+
+			if(maze->exitX == 0) {
+				maze->exitX = mazeFrame->width - 1;
+			}
+			else {
+				maze->exitX = 0;
+			}
+
+			if(maze->exitY == 0) {
+				maze->exitY = fp_frame_height(mazeFrame) - 1;
+			}
+			else {
+				maze->exitY = 0;
+			}
+		}
+
+		return true;
+	}
+
+	return false;
+}
+
+// take a step forward following the right wall
+void maze_step_next(maze_state* maze) {
+	// try to step to the right
+	// clockwise and counter-clockwise are inverted??
+	unsigned int direction = maze_rotate_ccw(maze->lastDirection);
+	do {
+		if(maze_step(maze, direction)) {
+			break;
+		}
+
+		direction = maze_rotate_cw(direction);
+	} while(direction != maze_rotate_ccw(maze->lastDirection));
+}
+
+void maze_step_prev(maze_state* maze) {
+	unsigned int direction = maze_rotate_cw(maze_opposite(maze->lastDirection));
+	do {
+		if(maze_step(maze, direction)) {
+			break;
+		}
+
+		direction = maze_rotate_ccw(direction);
+	} while(direction != maze_rotate_cw(maze->lastDirection));
+}
 
 bool maze_render(fp_view* view) {
 	fp_dynamic_view_data* viewData = view->data;
@@ -661,31 +733,14 @@ bool maze_render(fp_view* view) {
 	maze_state* maze = viewData->data;
 	fp_frame* mazeFrame = fp_frame_get(maze->maze);
 
-	TickType_t lastStepTick = maze->lastStepTick;
-	TickType_t currentTick = xTaskGetTickCount();
+	if(maze->autostepPeriodMs > 0) {
+		TickType_t lastStepTick = maze->lastStepTick;
+		TickType_t currentTick = xTaskGetTickCount();
 
-	if(currentTick > lastStepTick + pdMS_TO_TICKS(500)) {
-		// try to step to the right
-		// clockwise and counter-clockwise are inverted??
-		unsigned int direction = maze_rotate_ccw(maze->lastDirection);
-		int index = fp_fcalc_index(maze->x, maze->y, mazeFrame->width);
-
-		do {
-			int nextX = maze_dx(direction) + maze->x;
-			int nextY = maze_dy(direction) + maze->y;
-
-			if(fp_frame_has_point(mazeFrame, nextX, nextY)
-				&& (mazeFrame->pixels[index].bits & direction) != 0) {
-				maze->x = nextX;
-				maze->y = nextY;
-				maze->lastDirection = direction;
-				break;
-			}
-
-			direction = maze_rotate_cw(direction);
-		} while(direction != maze_rotate_ccw(maze->lastDirection));
-
-		maze->lastStepTick = currentTick;
+		if(currentTick > lastStepTick + pdMS_TO_TICKS(maze->autostepPeriodMs)) {
+			maze_step_next(maze);
+			maze->lastStepTick = currentTick;
+		}
 	}
 
 
@@ -728,6 +783,9 @@ bool maze_render(fp_view* view) {
 				/* 	y*255/fp_frame_height(mazeFrame) */
 				/* ); */
 				rgb_color color = rgb(255, 0, 0);
+				if(nextX == maze->exitX && nextY == maze->exitY ) {
+					color = rgb(0, 255, 0);
+				}
 				viewFrame->pixels[nextIndex] = color;
 			}
 
@@ -799,11 +857,14 @@ fp_viewid maze_demo_init(void** data) {
 
 	maze_state* state = malloc(sizeof(maze_state));
 
-	state->x = mazeFrame->width / 2;
-	state->y = fp_frame_height(mazeFrame) / 2;
+	state->x = 0;
+	state->y = 0;
 	state->maze = maze;
 	state->lastDirection = MAZE_N;
+	state->autostepPeriodMs = 500;
 	state->lastStepTick = xTaskGetTickCount();
+	state->exitX = SCREEN_WIDTH-1;
+	state->exitY = SCREEN_HEIGHT-1;
 
 	fp_viewid view = fp_dynamic_view_create(SCREEN_WIDTH, SCREEN_HEIGHT, &maze_render, NULL, state);
 
@@ -819,59 +880,134 @@ bool maze_demo_free(fp_view* view, void** data) {
 	return true;
 }
 
+fp_viewid maze_interactive_demo_init(void** data) {
+	fp_frameid maze = fp_frame_create(SCREEN_WIDTH, SCREEN_HEIGHT, rgb(0, 0, 0));
+	fp_frame* mazeFrame = fp_frame_get(maze);
+	maze_carve_passages(mazeFrame, 0, 0);
+
+	maze_state* state = malloc(sizeof(maze_state));
+
+	state->x = 0;
+	state->y = 0;
+	state->maze = maze;
+	state->lastDirection = MAZE_N;
+	state->autostepPeriodMs = 0;
+	state->lastStepTick = 0;
+	state->exitX = SCREEN_WIDTH-1;
+	state->exitY = SCREEN_HEIGHT-1;
+
+	fp_viewid view = fp_dynamic_view_create(SCREEN_WIDTH, SCREEN_HEIGHT, &maze_render, NULL, state);
+
+	return view;
+
+}
+	
+bool maze_interactive_demo_free(fp_view* view, void** data) {
+	fp_dynamic_view_data* viewData = view->data;
+	maze_state* maze = viewData->data;
+	fp_frame_free(maze->maze);
+	free(maze);
+	return true;
+}
+
+void maze_interactive_demo_onrotate(fp_view* view, fp_rotary_encoder* re) {
+	fp_dynamic_view_data* viewData = view->data;
+
+	maze_state* maze = viewData->data;
+
+	if(re->lastDirectionCw) {
+		maze_step_next(maze);
+	}
+	else {
+		maze_step_prev(maze);
+	}
+}
+
+void maze_interactive_demo_onbutton(fp_button* button) {
+}
+
 demo_mode demos[] = {{
 	&frame_view_demo_init,
 	&frame_view_demo_free,
+	NULL,
+	NULL,
 	0,
 	NULL
 }, {
 	&dynamic_view_demo_init,
 	&dynamic_view_demo_free,
+	NULL,
+	NULL,
 	0,
 	NULL
 }, {
 	&animation_view_demo_init,
 	&animation_view_demo_free,
+	NULL,
+	NULL,
 	0,
 	NULL
 }, {
 	&layer_view_demo_init,
 	&layer_view_demo_free,
+	NULL,
+	NULL,
 	0,
 	NULL
 }, {
 	&layer_view_alpha_demo_init,
 	&layer_view_alpha_demo_free,
+	NULL,
+	NULL,
 	0,
 	NULL
 }, {
 	&spinning_ball_demo_init,
 	&spinning_ball_demo_free,
+	NULL,
+	NULL,
 	0,
 	NULL
 }, {
 	&animated_layer_view_demo_init,
 	&animated_layer_view_demo_free,
+	NULL,
+	NULL,
 	0,
 	NULL
 }, {
 	&transition_view_demo_init,
 	&transition_view_demo_free,
+	NULL,
+	NULL,
 	0,
 	NULL
 }, {
 	&animated_transition_view_demo_init,
 	&animated_transition_view_demo_free,
+	NULL,
+	NULL,
 	0,
 	NULL
 }, {
 	&ppm_image_demo_init,
 	&ppm_image_demo_free,
+	NULL,
+	NULL,
 	0,
 	NULL
 }, {
 	&maze_demo_init,
 	&maze_demo_free,
+	NULL,
+	NULL,
+	0,
+	NULL
+}, {
+	&maze_interactive_demo_init,
+	&maze_interactive_demo_free,
+	&maze_interactive_demo_onrotate,
+	NULL,
 	0,
 	NULL
 }};
@@ -985,6 +1121,18 @@ void select_demo(fp_rotary_encoder* re) {
 	}
 }
 
+void onrotate_left(fp_rotary_encoder* re) {
+	if(currentDemo != NULL && currentDemo->onrotate_mode != NULL) {
+		currentDemo->onrotate_mode(fp_view_get(currentDemo->view), re);
+	}
+}
+
+void onbutton_left(fp_button* button) {
+	if(currentDemo != NULL && currentDemo->onbutton_mode != NULL) {
+		currentDemo->onbutton_mode(fp_view_get(currentDemo->view), button);
+	}
+}
+
 void change_brightness(fp_button* button) {
 	printf("button state %d\n", button->state);
 
@@ -1021,8 +1169,8 @@ void app_main()
 
     printf("silicon revision %d, ", chip_info.revision);
 
-    printf("%dMB %s flash\n", spi_flash_get_chip_size() / (1024 * 1024),
-            (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external");
+    /* printf("%dMB %s flash\n", spi_flash_get_chip_size() / (1024 * 1024), */
+            /* (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external"); */
 
 	/* init spiffs to load images from filesystem */
 	esp_vfs_spiffs_conf_t conf = {
@@ -1079,9 +1227,12 @@ void app_main()
 
 	demoQueue = xQueueCreate(10, sizeof(demoIndex));
 
-	fp_rotary_encoder* re = fp_rotary_encoder_init(19, 21, &select_demo, gpio_evt_queue, (void*)mainViewId);
+	fp_rotary_encoder* re = fp_rotary_encoder_init(19, 21, &select_demo, gpio_evt_queue, (void*)(size_t)mainViewId);
+	fp_button* button = fp_button_init(3, &change_brightness, gpio_evt_queue, (void*)(size_t)screenViewId);
 
-	fp_button* button = fp_button_init(3, &change_brightness, gpio_evt_queue, (void*)screenViewId);
+	fp_rotary_encoder* reLeft = fp_rotary_encoder_init(16, 17, &onrotate_left, gpio_evt_queue, NULL);
+
+	fp_button* buttonLeft = fp_button_init(4, &onbutton_left, gpio_evt_queue, NULL);
 
 	/* fp_rotary_encoder* re = fp_rotary_encoder_init(19, 21, &fp_rotary_encoder_on_position_change_printdbg, gpio_evt_queue); */
 
@@ -1107,6 +1258,9 @@ void app_main()
 
 	fp_rotary_encoder_free(re);
 	fp_button_free(button);
+
+	fp_rotary_encoder_free(reLeft);
+	fp_button_free(buttonLeft);
 
 	xSemaphoreTake(ledRenderLock, portMAX_DELAY);
     printf("Restarting now.\n");

@@ -10,9 +10,16 @@
 #define LED_BUFFER_ITEMS ((NUM_LEDS * BITS_PER_LED_CMD))
 
 // These values are determined by measuring pulse timing with logic analyzer and adjusting to match datasheet. 
-#define T0H 14  // 0 bit high time
-#define T1H 52  // 1 bit high time
-#define TL  52  // low time for either bit
+/* #define T0H 14 // 0 bit high time */
+/* #define T0L 52 // 0 bit low time */
+/* #define T1H 52 // 1 bit high time */
+/* #define T1L 52 // 1 bit low time */
+
+// retuned timings. the old timings work but these are more accurate to spe
+#define T0H 14 // 0 bit high time (0.35us)
+#define T1H 28 // 1 bit high time (0.7us)
+#define T0L 32 // 0 bit low time  (0.8us)
+#define T1L 24 // 1 bit low time  (0.6us)
 
 // This is the buffer which the hw peripheral will access while pulsing the output pin
 rmt_item32_t led_data_buffer[LED_BUFFER_ITEMS];
@@ -21,7 +28,7 @@ void setup_rmt_data_buffer(struct led_state new_state);
 
 void ws2812_control_init(void)
 {
-  rmt_config_t config;
+  rmt_config_t config = RMT_DEFAULT_CONFIG_TX(LED_RMT_TX_GPIO, LED_RMT_TX_CHANNEL);
   config.rmt_mode = RMT_MODE_TX;
   config.channel = LED_RMT_TX_CHANNEL;
   config.gpio_num = LED_RMT_TX_GPIO;
@@ -50,8 +57,8 @@ void setup_rmt_data_buffer(struct led_state new_state)
     for (uint32_t bit = 0; bit < BITS_PER_LED_CMD; bit++) {
       uint32_t bit_is_set = bits_to_send & mask;
       led_data_buffer[led * BITS_PER_LED_CMD + bit] = bit_is_set ?
-                                                      (rmt_item32_t){{{T1H, 1, TL, 0}}} : 
-                                                      (rmt_item32_t){{{T0H, 1, TL, 0}}};
+                                                      (rmt_item32_t){{{T1H, 1, T1L, 0}}} : 
+                                                      (rmt_item32_t){{{T0H, 1, T0L, 0}}};
       mask >>= 1;
     }
   }

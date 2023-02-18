@@ -31,6 +31,7 @@ fp_rotary_encoder* fp_rotary_encoder_init(
 	re->state = 0;
 	re->lastInputA = 0;
 	re->lastInputB = 0;
+	re->lastDirectionCw = false;
 
 	re->data = data;
 
@@ -93,11 +94,13 @@ bool fp_rotary_encoder_update_state(fp_rotary_encoder* re, int a, int b, int aPr
 	if(re->state > 3) {
 		re->state -= 4;
 		re->position++;
+		re->lastDirectionCw = true;
 		return true;
 	}
 	else if(re->state < -3) {
 		re->state += 4;
 		re->position--;
+		re->lastDirectionCw = false;
 		return true;
 	}
 	
