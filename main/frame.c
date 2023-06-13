@@ -11,7 +11,7 @@
 #include "global.h"
 
 unsigned int fp_fcalc_index(unsigned int x, unsigned int y, unsigned int width) {
-	return y * width + x % width;
+	return y*width + x%width;
 }
 
 bool fp_frame_has_point(fp_frame* frame, int x, int y) {
@@ -132,7 +132,7 @@ bool fp_fset_rect(
 		return false;
 	}
 
-	for(int row = 0; row < fmin(frame->length / frame->width, fmax(0, targetFrame->length / targetFrame->width - y)); row++) {
+	for(int row = 0; row < (int)fmin(frame->length / frame->width, fmax(0, targetFrame->length / targetFrame->width - y)); row++) {
 		memcpy(
 			&targetFrame->pixels[fp_fcalc_index(x, y + row, targetFrame->width)],
 			&frame->pixels[fp_fcalc_index(0, row, frame->width)],

@@ -15,7 +15,7 @@
 /* #define T1H 52 // 1 bit high time */
 /* #define T1L 52 // 1 bit low time */
 
-// retuned timings. the old timings work but these are more accurate to spe
+// retuned timings. the old timings work but these are more accurate to spec
 #define T0H 14 // 0 bit high time (0.35us)
 #define T1H 28 // 1 bit high time (0.7us)
 #define T0L 32 // 0 bit low time  (0.8us)

@@ -91,9 +91,9 @@ bool dynamic_view_demo_render(fp_view* view) {
 	for(int i = 0; i < SCREEN_WIDTH; i++) {
 		for(int j = 0; j < SCREEN_HEIGHT; j++) {
 			rgb_color color = frame->pixels[fp_fcalc_index(i, j, frame->width)];
-			color.fields.r = fmax(color.fields.r-1, 0);
-			color.fields.g = fmax(color.fields.g-1, 0); 
-			color.fields.b = fmax(color.fields.b-1, 0);
+			color.fields.r = (int)fmax(color.fields.r-1, 0);
+			color.fields.g = (int)fmax(color.fields.g-1, 0); 
+			color.fields.b = (int)fmax(color.fields.b-1, 0);
 			/*
 			if(color.fields.r == 0
 				&& color.fields.g == 0
@@ -1030,7 +1030,11 @@ bool demo_select_render(fp_view* view) {
 	for(int i = 0; i < SCREEN_WIDTH; i++) {
 		for(int j = 0; j < SCREEN_HEIGHT; j++) {
 			/* uint8_t value = fp_fcalc_index(i, j, frame->width) * 255 / frame->length; */
+			// r skews toward center. we take the inverse to get a distribution with more extreme values
+			/* float r = (((uint8_t)esp_random()/255.0)+((uint8_t)esp_random()/255.0)+((uint8_t)esp_random()/255.0))/3.0; */
+			/* uint8_t value = gamma8[(uint8_t)((1.0-r)*255)];// % 100; */
 			uint8_t value = gamma8[(uint8_t)esp_random()];// % 100;
+			/* uint8_t value = gamma8[(esp_random()%4)*(255/4)]; */
 			frame->pixels[fp_fcalc_index(i, j, frame->width)] = rgb(value, value, value);
 		}
 	}
@@ -1145,12 +1149,19 @@ void change_brightness(fp_button* button) {
 	fp_view* screenView = fp_view_get(screenViewId);
 	fp_ws2812_view_data* screenData = screenView->data;
 
-	float brightness = screenData->brightness + 0.2;
-	if(brightness >= 1.0f) {
-		brightness -= 1.0f;
+	float brightness = screenData->brightness;
+	if(brightness >= 0.4f) {
+		brightness -= 0.2f;
 	}
-
+	else {
+		brightness -= 0.05f;
+	}
+	if(brightness <= 0.05f) {
+		brightness = 1.0f;
+	}
+	xSemaphoreTake(ledRenderLock, portMAX_DELAY);
 	screenData->brightness = brightness;
+	xSemaphoreGive(ledRenderLock);
 }
 
 static xQueueHandle gpio_evt_queue = NULL;
@@ -1213,7 +1224,7 @@ void app_main()
 	fp_view_register_type(FP_VIEW_TRANSITION, fp_transition_view_register_data);
 	fp_view_register_type(FP_VIEW_DYNAMIC, fp_dynamic_view_register_data);
 
-	fp_viewid screenViewId = fp_create_ws2812_view(SCREEN_WIDTH, SCREEN_HEIGHT);
+	fp_viewid screenViewId = fp_create_ws2812_view(SCREEN_WIDTH, SCREEN_HEIGHT, FP_INDEX_ZIGZAG);
 	fp_viewid mainViewId = fp_dynamic_view_create(SCREEN_WIDTH, SCREEN_HEIGHT, &demo_select_render, demo_select_onnext_render, (void*)true);
 
 	play_demo(mainViewId, &demos[0]);
